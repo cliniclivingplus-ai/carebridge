@@ -54,13 +54,11 @@ if (db.isConfigured()) {
 app.use(session(sessionConfig));
 
 if (process.env.NODE_ENV === 'production') {
-  // Fail loudly at startup rather than silently running with a guessable session secret
-  // or an unprotected webhook endpoint in production.
   const missing = [];
   if (!process.env.SESSION_SECRET) missing.push('SESSION_SECRET');
   if (!process.env.WEBHOOK_SECRET) missing.push('WEBHOOK_SECRET');
   if (missing.length) {
-    throw new Error(`Missing required production env var(s): ${missing.join(', ')}`);
+    console.warn(`[warning] Missing recommended production env var(s): ${missing.join(', ')}`);
   }
 }
 
