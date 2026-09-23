@@ -137,6 +137,25 @@ function updateMobileNavLabels(openLabel, mineLabel) {
   if (mineSpan) mineSpan.textContent = mineLabel;
 }
 
+// Puts the filter chips in the given order (the same buttons are shared by every role).
+function orderFilterChips(order) {
+  const container = filterChips[0] && filterChips[0].parentElement;
+  if (!container) return;
+  for (const key of order) {
+    const chip = [...filterChips].find((c) => c.dataset.filter === key);
+    if (chip) container.appendChild(chip);
+  }
+}
+
+// Keeps the filter chips and the phone bottom bar pointing at the same list.
+function setActiveFilter(filter) {
+  activeFilter = filter;
+  filterChips.forEach((c) => c.classList.toggle('active', c.dataset.filter === filter));
+  mobNavItems.forEach((i) => {
+    if (i.dataset.filter) i.classList.toggle('active', i.dataset.filter === filter);
+  });
+}
+
 function updateFilterChipLabels(labels) {
   filterChips.forEach((chip) => {
     const filterKey = chip.dataset.filter;
@@ -191,6 +210,8 @@ function showApp(userObj, liveMode) {
       completed: '✅ Completed'
     });
     updateMobileNavLabels('Open Tasks', 'My Cases');
+    orderFilterChips(['open', 'mine', 'all', 'completed']);
+    setActiveFilter('open');
   } else {
     // Sales and Doctor do the same job on this screen (enrol patients, watch progress), so they
     // get the same layout and the same words -- only the page title differs.
@@ -207,16 +228,19 @@ function showApp(userObj, liveMode) {
       }
     }
     if (statCard1) statCard1.textContent = 'Total Enrolments';
-    if (statCard2) statCard2.textContent = 'Active Enrolments';
-    if (statCard3) statCard3.textContent = 'Pending Physio';
+    if (statCard2) statCard2.textContent = 'Assigned Cases';
+    if (statCard3) statCard3.textContent = 'Unassigned Cases';
 
+    // "Assigned" = a physio has taken it and sessions remain; "Unassigned" = no physio yet.
     updateFilterChipLabels({
-      open: '⏳ Pending Physio',
-      mine: '🩺 Active Enrolments',
       all: '📌 All Enrolments',
-      completed: '✅ Completed Enrolments'
+      completed: '✅ Completed',
+      mine: '🩺 Assigned Cases',
+      open: '⏳ Unassigned Cases'
     });
-    updateMobileNavLabels('Pending Physio', 'Active');
+    updateMobileNavLabels('Unassigned', 'Assigned');
+    orderFilterChips(['all', 'completed', 'mine', 'open']);
+    setActiveFilter('all');
   }
 
   modeText.textContent = liveMode ? 'LIVE CLINICEA' : 'MOCK DEMO';
@@ -796,9 +820,7 @@ if (searchInput) {
 
 filterChips.forEach((chip) => {
   chip.addEventListener('click', () => {
-    filterChips.forEach((c) => c.classList.remove('active'));
-    chip.classList.add('active');
-    activeFilter = chip.dataset.filter || 'all';
+    setActiveFilter(chip.dataset.filter || 'all');
     loadCases().catch(() => {});
   });
 });
@@ -810,10 +832,7 @@ mobNavItems.forEach((item) => {
       loadCases().catch(() => {});
       return;
     }
-    mobNavItems.forEach((i) => i.classList.remove('active'));
-    item.classList.add('active');
-    activeFilter = item.dataset.filter || 'all';
-    filterChips.forEach((c) => c.classList.toggle('active', c.dataset.filter === activeFilter));
+    setActiveFilter(item.dataset.filter);
     loadCases().catch(() => {});
   });
 });
