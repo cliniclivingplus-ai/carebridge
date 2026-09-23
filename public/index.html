@@ -149,9 +149,10 @@
           <input type="text" id="search-input" placeholder="Search patient, phone, or location..." />
         </div>
         <div class="filter-chips">
-          <button class="chip active" data-filter="all">All Visits</button>
-          <button class="chip" data-filter="mine">My Visits</button>
-          <button class="chip" data-filter="unassigned">Unassigned</button>
+          <button class="chip active" data-filter="open">📥 Open Tasks</button>
+          <button class="chip" data-filter="mine">👨‍⚕️ My Cases</button>
+          <button class="chip" data-filter="all">📋 All Cases</button>
+          <button class="chip" data-filter="completed">✅ Completed</button>
         </div>
       </section>
 
@@ -159,11 +160,11 @@
       <section class="lookup-section glass-card">
         <div class="lookup-header">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-          <strong>Look up patient by ID</strong>
+          <strong>Look up patient by ID to Enroll</strong>
         </div>
         <form id="lookup-form" class="lookup-form">
           <input type="text" id="lookup-input" placeholder="Enter patient's Clinicea ID (e.g. CLP23)" autocomplete="off" required />
-          <button type="submit" class="pill-btn">Search</button>
+          <button type="submit" class="pill-btn">Search &amp; Enroll</button>
         </form>
         <div id="lookup-result" class="lookup-result" hidden></div>
         <p id="lookup-error" class="error"></p>
@@ -192,8 +193,8 @@
         <div class="empty-icon">
           <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect width="18" height="18" x="3" y="4" rx="2" ry="2"/><line x1="16" x2="16" y1="2" y2="6"/><line x1="8" x2="8" y1="2" y2="6"/><line x1="3" x2="21" y1="10" y2="10"/><path d="m9 16 2 2 4-4"/></svg>
         </div>
-        <h3>No Sessions Found</h3>
-        <p>There are no physiotherapy home visits matching your criteria for this date.</p>
+        <h3>No Home-Visit Cases Found</h3>
+        <p>There are no physiotherapy cases matching your filter criteria.</p>
       </div>
 
       <!-- Appointments Cards Container -->
@@ -202,13 +203,13 @@
 
     <!-- Mobile Bottom Floating Bar -->
     <nav class="mobile-nav">
-      <button id="mob-nav-all" class="mob-nav-item active">
+      <button id="mob-nav-all" class="mob-nav-item active" data-filter="open">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="7" height="9" x="3" y="3" rx="1"/><rect width="7" height="5" x="14" y="3" rx="1"/><rect width="7" height="9" x="14" y="12" rx="1"/><rect width="7" height="5" x="3" y="16" rx="1"/></svg>
-        <span>Sessions</span>
+        <span>Open Tasks</span>
       </button>
-      <button id="mob-nav-mine" class="mob-nav-item">
+      <button id="mob-nav-mine" class="mob-nav-item" data-filter="mine">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-        <span>My Visits</span>
+        <span>My Cases</span>
       </button>
       <button id="mob-nav-refresh" class="mob-nav-item">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 16h5v5"/></svg>
@@ -217,61 +218,102 @@
     </nav>
   </div>
 
-  <!-- Structured Visit Feedback Modal -->
+  <!-- 2-Part Structured Visit Feedback Modal -->
   <div id="feedback-modal" class="modal-backdrop" hidden>
-    <div class="modal-card glass-card">
+    <div class="modal-card glass-card modal-large">
       <div class="modal-header">
         <div>
-          <h3>Record Session Feedback</h3>
-          <p id="modal-subtitle">Submit structured visit questionnaire to Clinicea</p>
+          <h3>Record Visit Feedback</h3>
+          <p id="modal-subtitle">Two-part home-visit session evaluation &amp; Clinicea sync</p>
         </div>
         <button id="close-feedback-modal" class="close-btn" type="button">&times;</button>
       </div>
 
       <form id="feedback-form">
-        <input type="hidden" id="fb-appt-id" />
+        <input type="hidden" id="fb-case-id" />
         <input type="hidden" id="fb-patient-id" />
 
+        <!-- Feedback Sections Header -->
+        <div class="fb-section-title">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+          <span>PART 1: Pre-Session Baseline Assessment</span>
+        </div>
+
         <div class="q-group">
-          <label>1. Pain Level (Scale 1–10)</label>
+          <label>1. Initial Pain Level at Arrival (Scale 1–10)</label>
           <div class="pain-rating-bar">
-            <input type="range" id="fb-pain-range" min="1" max="10" value="3" />
-            <span id="fb-pain-val" class="pain-badge pain-mild">3 / 10 (Mild)</span>
+            <input type="range" id="fb-pain-before" min="1" max="10" value="4" />
+            <span id="fb-pain-before-val" class="pain-badge pain-moderate">4 / 10 (Moderate)</span>
           </div>
         </div>
 
         <div class="q-group">
-          <label>2. Mobility &amp; ROM Status</label>
+          <label>2. Pre-Session Vitals &amp; Condition</label>
           <div class="status-chips-selector">
-            <button type="button" class="q-chip active" data-q="mobility" data-val="Improved">Improved</button>
-            <button type="button" class="q-chip" data-q="mobility" data-val="Same">Same / Stable</button>
+            <button type="button" class="q-chip active" data-q="vitals" data-val="Normal / Stable">Normal / Stable</button>
+            <button type="button" class="q-chip" data-q="vitals" data-val="Elevated BP / Pulse">Elevated BP / Pulse</button>
+            <button type="button" class="q-chip" data-q="vitals" data-val="Fatigued">Fatigued</button>
+            <button type="button" class="q-chip" data-q="vitals" data-val="Severe Stiffness">Severe Stiffness</button>
+          </div>
+        </div>
+
+        <div class="q-group">
+          <label>3. Patient Readiness for Therapy</label>
+          <div class="status-chips-selector">
+            <button type="button" class="q-chip active" data-q="readiness" data-val="Ready for full routine">Ready for full routine</button>
+            <button type="button" class="q-chip" data-q="readiness" data-val="Requires modified intensity">Modified intensity</button>
+            <button type="button" class="q-chip" data-q="readiness" data-val="Pain flare-up">Pain flare-up</button>
+          </div>
+        </div>
+
+        <hr class="modal-divider" />
+
+        <div class="fb-section-title">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+          <span>PART 2: Post-Session Summary &amp; Outcome</span>
+        </div>
+
+        <div class="q-group">
+          <label>4. Post-Session Pain Level (Scale 1–10)</label>
+          <div class="pain-rating-bar">
+            <input type="range" id="fb-pain-after" min="1" max="10" value="3" />
+            <span id="fb-pain-after-val" class="pain-badge pain-mild">3 / 10 (Mild)</span>
+          </div>
+        </div>
+
+        <div class="q-group">
+          <label>5. Post-Session Mobility &amp; ROM Status</label>
+          <div class="status-chips-selector">
+            <button type="button" class="q-chip active" data-q="mobility" data-val="Significant Improvement">Significant</button>
+            <button type="button" class="q-chip" data-q="mobility" data-val="Moderate Improvement">Moderate</button>
+            <button type="button" class="q-chip" data-q="mobility" data-val="Stable / Unchanged">Stable</button>
             <button type="button" class="q-chip" data-q="mobility" data-val="Restricted">Restricted</button>
           </div>
         </div>
 
         <div class="q-group">
-          <label>3. Patient Compliance</label>
+          <label>6. Exercises &amp; Modalities Completed Today</label>
+          <input type="text" id="fb-exercises" placeholder="e.g. Quadriceps sets 3x10, SLR 2x10, TENS therapy 15 mins" required />
+        </div>
+
+        <div class="q-group">
+          <label>7. Patient Compliance &amp; Home Exercise Adherence</label>
           <div class="status-chips-selector">
-            <button type="button" class="q-chip active" data-q="compliance" data-val="Excellent">Excellent</button>
-            <button type="button" class="q-chip" data-q="compliance" data-val="Moderate">Moderate</button>
-            <button type="button" class="q-chip" data-q="compliance" data-val="Needs Encouragement">Needs Support</button>
+            <button type="button" class="q-chip active" data-q="compliance" data-val="Excellent (Followed HEP daily)">Excellent</button>
+            <button type="button" class="q-chip" data-q="compliance" data-val="Moderate (Partial HEP)">Moderate</button>
+            <button type="button" class="q-chip" data-q="compliance" data-val="Poor (Skipped HEP)">Poor</button>
           </div>
         </div>
 
         <div class="q-group">
-          <label>4. Exercises Completed Today</label>
-          <input type="text" id="fb-exercises" placeholder="e.g. Knee extensions 3x10, Ankle pumps, Quadriceps sets" required />
-        </div>
-
-        <div class="q-group">
-          <label>5. Detailed Clinical Observations</label>
-          <textarea id="fb-notes" rows="3" placeholder="Enter clinical observations, progress, or recommendations for the doctor..."></textarea>
+          <label>8. Physiotherapist Clinical Observations &amp; Next Plan</label>
+          <textarea id="fb-notes" rows="3" placeholder="Enter observations, recommendations for the doctor, or care adjustments..."></textarea>
         </div>
 
         <div class="modal-footer">
           <button type="button" id="btn-cancel-fb" class="btn-secondary">Cancel</button>
           <button type="submit" class="btn-primary">
-            <span>Submit &amp; Sync to Clinicea</span>
+            <span>Save &amp; Sync Session to Clinicea</span>
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="m5 12 5 5L20 7"/></svg>
           </button>
         </div>
@@ -279,33 +321,51 @@
     </div>
   </div>
 
-  <!-- Allot Sessions Modal (Sales & CLP Doctor Only) -->
+  <!-- Allot Sessions / Enroll Case Modal (Sales & CLP Doctor Only) -->
   <div id="allot-modal" class="modal-backdrop" hidden>
     <div class="modal-card glass-card">
       <div class="modal-header">
         <div>
-          <h3>Allot Sessions Plan (Open Task)</h3>
-          <p id="allot-modal-subtitle">Sales &amp; CLP Doctor Session Allotment</p>
+          <h3>Enroll Patient in Home-Visit Case</h3>
+          <p id="allot-modal-subtitle">Sales Team &amp; CLP Doctor Case Setup</p>
         </div>
         <button id="close-allot-modal" class="close-btn" type="button">&times;</button>
       </div>
 
       <form id="allot-form">
         <input type="hidden" id="allot-patient-id" />
+        <input type="hidden" id="allot-patient-name" />
+        <input type="hidden" id="allot-patient-mobile" />
+        <input type="hidden" id="allot-patient-address" />
+        <input type="hidden" id="allot-patient-city" />
+        <input type="hidden" id="allot-patient-pcode" />
+
         <div class="input-group">
-          <label for="allot-count">Total Allotted Sessions Count</label>
-          <input type="number" id="allot-count" min="1" max="50" value="5" required />
+          <label for="allot-symptoms">Primary Symptoms &amp; Clinical Concern</label>
+          <textarea id="allot-symptoms" rows="2" placeholder="e.g. Post-ACL reconstruction rehabilitation, knee stiffness & severe quad weakness" required></textarea>
         </div>
 
         <div class="input-group">
-          <label for="allot-notes">Home Visit Instructions / Plan Notes</label>
-          <textarea id="allot-notes" rows="2" placeholder="Special care instructions or notes for the physio..."></textarea>
+          <label for="allot-count">Total Allotted Sessions Count</label>
+          <input type="number" id="allot-count" min="1" max="50" value="10" required />
+        </div>
+
+        <div class="input-group">
+          <label for="allot-physio">Assign Physio (Optional)</label>
+          <select id="allot-physio" class="styled-select">
+            <option value="">-- Open Task (Unassigned Pool) --</option>
+          </select>
+        </div>
+
+        <div class="input-group">
+          <label for="allot-notes">Special Instructions &amp; Care Plan Notes</label>
+          <textarea id="allot-notes" rows="2" placeholder="Special instructions for the home visit physio..."></textarea>
         </div>
 
         <div class="modal-footer">
           <button type="button" id="btn-cancel-allot" class="btn-secondary">Cancel</button>
           <button type="submit" class="btn-primary">
-            <span>Save &amp; Enroll Patient</span>
+            <span>Create Case &amp; Publish Open Task</span>
           </button>
         </div>
       </form>

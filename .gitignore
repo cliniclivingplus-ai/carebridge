@@ -2,6 +2,8 @@ node_modules/
 .env
 data/db.json
 data/patient_plans.json
+data/cases.json
+data/sessions.json
 scratch/
 *.log
 

@@ -38,10 +38,12 @@ const feedbackModal = document.getElementById('feedback-modal');
 const feedbackForm = document.getElementById('feedback-form');
 const closeFeedbackModal = document.getElementById('close-feedback-modal');
 const btnCancelFb = document.getElementById('btn-cancel-fb');
-const fbApptId = document.getElementById('fb-appt-id');
+const fbCaseId = document.getElementById('fb-case-id');
 const fbPatientId = document.getElementById('fb-patient-id');
-const fbPainRange = document.getElementById('fb-pain-range');
-const fbPainVal = document.getElementById('fb-pain-val');
+const fbPainBefore = document.getElementById('fb-pain-before');
+const fbPainBeforeVal = document.getElementById('fb-pain-before-val');
+const fbPainAfter = document.getElementById('fb-pain-after');
+const fbPainAfterVal = document.getElementById('fb-pain-after-val');
 const fbExercises = document.getElementById('fb-exercises');
 const fbNotes = document.getElementById('fb-notes');
 
@@ -51,20 +53,29 @@ const allotForm = document.getElementById('allot-form');
 const closeAllotModal = document.getElementById('close-allot-modal');
 const btnCancelAllot = document.getElementById('btn-cancel-allot');
 const allotPatientId = document.getElementById('allot-patient-id');
+const allotPatientName = document.getElementById('allot-patient-name');
+const allotPatientMobile = document.getElementById('allot-patient-mobile');
+const allotPatientAddress = document.getElementById('allot-patient-address');
+const allotPatientCity = document.getElementById('allot-patient-city');
+const allotPatientPcode = document.getElementById('allot-patient-pcode');
+const allotSymptoms = document.getElementById('allot-symptoms');
 const allotCount = document.getElementById('allot-count');
+const allotPhysio = document.getElementById('allot-physio');
 
 let pollTimer = null;
 let currentUser = null;
 let currentUserRole = 'external_physio';
 let currentUserName = '';
 let team = []; // [{username, name, role}]
-let rawAppointments = [];
-let activeFilter = 'all'; // 'all', 'mine', 'unassigned'
+let rawCases = [];
+let activeFilter = 'open'; // 'open', 'mine', 'all', 'completed'
 let activeQuery = '';
 
 // Active selections for feedback form
-let selectedMobility = 'Improved';
-let selectedCompliance = 'Excellent';
+let selectedVitals = 'Normal / Stable';
+let selectedReadiness = 'Ready for full routine';
+let selectedMobility = 'Moderate Improvement';
+let selectedCompliance = 'Excellent (Followed HEP daily)';
 
 // toISOString() converts to UTC before formatting -- in any timezone ahead of UTC (e.g. IST,
 // UTC+5:30), local midnight on day X becomes day X-1 in UTC, so slicing the date back out
@@ -156,15 +167,13 @@ function syncLabel(status) {
   if (status === 'failed') return 'Saved in CareBridge';
   return 'Synced to Clinicea ✓';
 }
-
 function teamMemberName(username) {
   const member = team.find((t) => t.username === username);
   return member ? member.name : username;
 }
 
 function assignOptionsHtml(currentAssignee) {
-  const options = ['<option value="">Unassigned</option>'];
-  // Only list external physiotherapists (Jane, Raj, Meera) in the Assigned Physio dropdown
+  const options = ['<option value="">-- Open Task (Unassigned) --</option>'];
   const physios = team.filter((m) => m.role === 'external_physio' || !m.role);
   for (const member of physios) {
     const label = member.username === currentUser ? `${member.name} (me)` : member.name;
@@ -174,356 +183,266 @@ function assignOptionsHtml(currentAssignee) {
   return options.join('');
 }
 
-function updateStats(appointments) {
-  statTotal.textContent = appointments.length;
-  const myCount = appointments.filter((a) => a.assignedTo === currentUser).length;
-  const unassignedCount = appointments.filter((a) => !a.assignedTo).length;
-  statMyVisits.textContent = myCount;
-  statUnassigned.textContent = unassignedCount;
+function updateStats(casesList) {
+  if (statTotal) statTotal.textContent = casesList.length;
+  const openCount = casesList.filter((c) => c.status === 'open' || !c.assignedPhysio).length;
+  const myCount = casesList.filter((c) => c.assignedPhysio === currentUser).length;
+  if (statMyVisits) statMyVisits.textContent = myCount;
+  if (statUnassigned) statUnassigned.textContent = openCount;
 }
 
 function filterAppointments() {
-  let list = rawAppointments;
-
-  if (activeFilter === 'mine') {
-    list = list.filter((a) => a.assignedTo === currentUser);
-  } else if (activeFilter === 'unassigned') {
-    list = list.filter((a) => !a.assignedTo);
-  }
-
-  if (activeQuery) {
-    const q = activeQuery.toLowerCase();
-    list = list.filter((a) =>
-      (a.patientName || '').toLowerCase().includes(q) ||
-      (a.patientMobile || '').toLowerCase().includes(q) ||
-      (a.address || '').toLowerCase().includes(q) ||
-      (a.service || '').toLowerCase().includes(q)
-    );
-  }
-
-  renderAppointmentsList(list);
+  renderCasesList(rawCases);
 }
 
-function renderAppointmentsList(appointments) {
-  const focusedId = document.activeElement && document.activeElement.dataset ? document.activeElement.dataset.id : null;
-
+function renderCasesList(casesList) {
   listEl.innerHTML = '';
-  emptyState.hidden = appointments.length > 0;
+  emptyState.hidden = casesList.length > 0;
 
   const canEditAllotment = currentUserRole === 'sales' || currentUserRole === 'clp_doctor';
   const isPhysio = currentUserRole === 'external_physio';
   const canRecordFeedback = currentUserRole === 'external_physio' || currentUserRole === 'clp_doctor';
 
-  for (const appt of appointments) {
+  for (const item of casesList) {
     const card = document.createElement('div');
-    const isMine = appt.assignedTo === currentUser;
+    const isMine = item.assignedPhysio === currentUser;
     card.className = `appt-card glass-card ${isMine ? 'is-mine' : ''}`;
-    
-    const start = new Date(appt.start);
-    const end = new Date(appt.end);
-    const timeStr = `${start.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} – ${end.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
-    const assignedName = appt.assignedTo ? teamMemberName(appt.assignedTo) : 'Unassigned';
 
-    // Session tracker calculations
-    const plan = appt.patientPlan || { allottedSessions: 0, completedSessions: 0, remainingSessions: 0 };
-    const allotted = plan.allottedSessions || 0;
-    const completed = plan.completedSessions || 0;
+    const assignedName = item.assignedPhysio ? teamMemberName(item.assignedPhysio) : 'Unassigned Pool';
+    const allotted = item.allottedSessions || 10;
+    const completed = item.completedSessions || 0;
     const pct = allotted > 0 ? Math.min(100, Math.round((completed / allotted) * 100)) : 0;
+    const statusClass = `status-${item.status || 'open'}`;
+    const statusLabel = (item.status || 'open').replace('_', ' ');
 
     card.innerHTML = `
       <div class="card-header-bar">
         <div class="time-pill">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-          <span>${timeStr}</span>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect width="18" height="18" x="3" y="4" rx="2" ry="2"/><line x1="16" x2="16" y1="2" y2="6"/><line x1="8" x2="8" y1="2" y2="6"/></svg>
+          <span>${item.id}</span>
         </div>
-        <span class="service-pill">${appt.service || 'Physiotherapy'}</span>
+        <span class="case-status-badge ${statusClass}">${statusLabel}</span>
       </div>
 
       <div class="patient-info">
-        <div class="patient-name">${appt.patientName || 'Patient'}</div>
-        <div class="practitioner-sub">Practitioner: ${appt.practitioner || 'Unassigned'}</div>
+        <div class="patient-name">${item.patientName || 'Patient'} <small style="font-size:12px; color:var(--text-muted); font-weight:600">(${item.patientId})</small></div>
+        <div class="practitioner-sub">Enrolled by ${teamMemberName(item.createdBy)}</div>
       </div>
+
+      <!-- Symptoms & Clinical Concern Box -->
+      ${item.symptomsConcern ? `
+        <div class="symptoms-box">
+          <strong>Primary Symptoms &amp; Concern</strong>
+          <div>${item.symptomsConcern}</div>
+        </div>
+      ` : ''}
 
       <!-- Session Allotment & Progress Bar -->
       <div class="session-tracker-box">
         <div class="session-header">
-          <span class="session-title">Session Tracker</span>
-          <span class="session-counts">${allotted > 0 ? `Completed <strong>${completed}</strong> of <strong>${allotted}</strong>` : 'No plan allotted yet'}</span>
+          <span class="session-title">Home-Visit Programme Progress</span>
+          <span class="session-counts">Completed <strong>${completed}</strong> of <strong>${allotted}</strong> Sessions</span>
         </div>
-        ${allotted > 0 ? `
-          <div class="session-progress-bar">
-            <div class="session-progress-fill" style="width: ${pct}%;"></div>
-          </div>
-        ` : ''}
+        <div class="session-progress-bar">
+          <div class="session-progress-fill" style="width: ${pct}%;"></div>
+        </div>
         ${canEditAllotment ? `
-          <button class="btn-allot-sessions" data-patient-id="${appt.patientId || ''}" data-allotted="${allotted}" data-name="${appt.patientName || 'Patient'}">
+          <button class="btn-allot-sessions" data-patient-id="${item.patientId || ''}" data-allotted="${allotted}" data-name="${item.patientName || 'Patient'}">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v8"/><path d="M8 12h8"/></svg>
-            <span>${allotted > 0 ? 'Edit Session Allotment' : 'Allot Sessions (Sales / Doctor)'}</span>
+            <span>Edit Allotment</span>
           </button>
         ` : ''}
       </div>
 
       <div class="contact-strip">
-        ${appt.patientMobile ? `
-          <a href="tel:${appt.patientMobile}" class="contact-btn">
+        ${item.patientMobile ? `
+          <a href="tel:${item.patientMobile}" class="contact-btn">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
             <span>Call</span>
           </a>
         ` : ''}
-        ${appt.address ? `
-          <a href="https://maps.google.com/?q=${encodeURIComponent(appt.address)}" target="_blank" class="contact-btn">
+        ${item.address ? `
+          <a href="https://maps.google.com/?q=${encodeURIComponent([item.address, item.city, item.pcode].filter(Boolean).join(', '))}" target="_blank" class="contact-btn">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>
-            <span>Map</span>
+            <span>Map (${item.city || 'Location'})</span>
           </a>
         ` : ''}
-        <span class="source-badge">${sourceLabel(appt.source)}</span>
       </div>
 
       <div class="assign-box">
         <div class="assign-header">
           <span class="assign-label">Assigned Physio</span>
-          <span class="assigned-tag" data-assign-tag-for="${appt.id}">${isMine ? 'Assigned to You' : assignedName}</span>
+          <span class="assigned-tag" data-assign-tag-for="${item.id}">${isMine ? 'Assigned to You' : assignedName}</span>
         </div>
-        ${isPhysio ? `
-          <div class="assign-controls">
-            <select class="assign-select" data-assign-for="${appt.id}">
-              ${assignOptionsHtml(appt.assignedTo)}
-            </select>
-            <button class="btn-assign-self" data-assign-me-for="${appt.id}">Claim Visit</button>
-          </div>
-        ` : ''}
+        <div class="assign-controls">
+          <select class="assign-select" data-assign-for="${item.id}">
+            ${assignOptionsHtml(item.assignedPhysio)}
+          </select>
+          ${(!item.assignedPhysio || item.status === 'open') ? `
+            <button class="btn-claim-case" data-claim-case="${item.id}">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m5 12 5 5L20 7"/></svg>
+              <span>Take Case</span>
+            </button>
+          ` : ''}
+        </div>
       </div>
 
-      <!-- Feedback Questionnaire Action Button -->
-      ${canRecordFeedback ? `
+      <!-- Feedback Action Button -->
+      ${(canRecordFeedback && item.status !== 'completed') ? `
         <div class="feedback-action-strip">
-          <button class="btn-open-feedback" data-appt-id="${appt.id}" data-patient-id="${appt.patientId || ''}" data-name="${appt.patientName || 'Patient'}">
+          <button class="btn-open-feedback" data-case-id="${item.id}" data-patient-id="${item.patientId || ''}" data-name="${item.patientName || 'Patient'}">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-            <span>Record Visit Feedback &amp; Questionnaire</span>
+            <span>Record Session Feedback (Session ${completed + 1} of ${allotted})</span>
           </button>
         </div>
       ` : ''}
 
-      <!-- Clinicea Notes & Session History Box -->
+      <!-- Session History Timeline Box -->
       <div class="notes-box">
         <div class="notes-label-bar">
-          <label>Clinicea Notes &amp; Session History</label>
-          <span class="sync-status-badge ${appt.notesSyncStatus}" data-sync-for="${appt.id}">${syncLabel(appt.notesSyncStatus)}</span>
+          <label>Session Evaluation History &amp; Clinicea Sync</label>
         </div>
         ${(() => {
-          const history = (appt.patientPlan && appt.patientPlan.history && Array.isArray(appt.patientPlan.history))
-            ? appt.patientPlan.history
-            : [];
-          if (history.length === 0) return '';
+          const sessions = item.sessions || [];
+          if (sessions.length === 0) {
+            return `<div class="empty-card" style="padding:12px"><p style="font-size:12px; margin:0">No sessions completed yet for this home-visit programme.</p></div>`;
+          }
           return `
             <div class="history-timeline">
-              <div class="history-title-bar">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 8v4l3 3"/><circle cx="12" cy="12" r="9"/></svg>
-                <span>Past Visit Feedback History (${history.length} Session${history.length > 1 ? 's' : ''})</span>
-              </div>
               <div class="history-list">
-                ${history.slice().reverse().map((h) => `
+                ${sessions.slice().reverse().map((s) => `
                   <div class="history-item">
                     <div class="history-item-header">
-                      <span class="session-tag">Session ${h.sessionNumber || '1'} of ${h.totalAllotted || allotted || '5'}</span>
-                      <span class="history-author">Logged by ${teamMemberName(h.loggedBy)} ${h.timestamp ? '• ' + new Date(h.timestamp).toLocaleDateString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : ''}</span>
+                      <span class="session-tag">Session ${s.sessionNumber} of ${allotted}</span>
+                      <span class="history-author">${s.physioUsername ? teamMemberName(s.physioUsername) : 'Physio'} • ${new Date(s.createdAt || s.scheduledDate).toLocaleDateString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
                     </div>
                     <div class="history-metrics">
-                      <span class="metric-pill pain-pill">Pain: ${h.painLevel || 'N/A'}/10</span>
-                      <span class="metric-pill">Mobility: ${h.mobilityStatus || 'N/A'}</span>
-                      <span class="metric-pill">Compliance: ${h.patientCompliance || 'N/A'}</span>
+                      <span class="metric-pill pain-pill">Pain (Pre): ${s.beforeAssessment?.painLevelBefore || 'N/A'}/10</span>
+                      <span class="metric-pill pain-pill">Pain (Post): ${s.afterSummary?.painLevelAfter || 'N/A'}/10</span>
+                      <span class="metric-pill">Mobility: ${s.afterSummary?.mobilityStatus || 'N/A'}</span>
+                      <span class="metric-pill">Compliance: ${s.afterSummary?.patientCompliance || 'N/A'}</span>
                     </div>
-                    ${h.exercisesCompleted ? `<div class="history-detail"><strong>Exercises:</strong> ${h.exercisesCompleted}</div>` : ''}
-                    ${h.clinicalNotes ? `<div class="history-notes">"${h.clinicalNotes}"</div>` : ''}
+                    ${s.afterSummary?.exercisesCompleted ? `<div class="history-detail"><strong>Exercises:</strong> ${s.afterSummary.exercisesCompleted}</div>` : ''}
+                    ${s.clinicalNotes ? `<div class="history-notes">"${s.clinicalNotes}"</div>` : ''}
                   </div>
                 `).join('')}
               </div>
             </div>
           `;
         })()}
-        <textarea data-id="${appt.id}" placeholder="Record visit observations, ROM, exercises, or progress...">${appt.notes || ''}</textarea>
-        <div class="notes-actions">
-          <div class="quick-templates">
-            <button class="tmpl-chip" data-tmpl-for="${appt.id}" data-text="Completed 45m home session. Good ROM progress.">Good ROM</button>
-            <button class="tmpl-chip" data-tmpl-for="${appt.id}" data-text="Physio exercise routine 3x10 completed. Pain minimal.">Exercises Done</button>
-            <button class="tmpl-chip" data-tmpl-for="${appt.id}" data-text="Follow-up session required next week.">Follow-up</button>
-          </div>
-          <button class="btn-save-notes" data-save-for="${appt.id}">
-            <span>Save Notes</span>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="m5 12 5 5L20 7"/></svg>
-          </button>
-        </div>
       </div>
     `;
     listEl.appendChild(card);
-  }
-
-  if (focusedId) {
-    const el = listEl.querySelector(`textarea[data-id="${focusedId}"]`);
-    if (el) el.focus();
   }
 
   attachCardEvents();
 }
 
 function attachCardEvents() {
-  // Quick template insertion
-  listEl.querySelectorAll('.tmpl-chip').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      const id = btn.dataset.tmplFor;
-      const textarea = listEl.querySelector(`textarea[data-id="${id}"]`);
-      if (textarea) {
-        const existing = textarea.value.trim();
-        textarea.value = existing ? `${existing} ${btn.dataset.text}` : btn.dataset.text;
-        textarea.focus();
+  // Claim Case / Take Case button
+  listEl.querySelectorAll('[data-claim-case]').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const caseId = btn.dataset.claimCase;
+      btn.disabled = true;
+      try {
+        await api(`/api/cases/${encodeURIComponent(caseId)}/claim`, { method: 'POST' });
+        await loadCases();
+      } catch (err) {
+        alert(`Claim failed: ${err.message}`);
+        btn.disabled = false;
       }
     });
   });
 
-  // Open Allotment Modal
-  listEl.querySelectorAll('.btn-allot-sessions').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      const patientId = btn.dataset.patientId;
-      const currentAllotted = btn.dataset.allotted || 5;
-      const name = btn.dataset.name;
-      if (!patientId) {
-        alert('Cannot allot sessions: Patient Clinicea ID is missing.');
-        return;
+  // Assign Case select dropdown
+  listEl.querySelectorAll('select[data-assign-for]').forEach((select) => {
+    select.addEventListener('change', async () => {
+      const caseId = select.dataset.assignFor;
+      select.disabled = true;
+      try {
+        await api(`/api/cases/${encodeURIComponent(caseId)}/assign`, {
+          method: 'PUT',
+          body: JSON.stringify({ assignedPhysio: select.value || null }),
+        });
+        await loadCases();
+      } catch (err) {
+        alert(`Assignment failed: ${err.message}`);
+        select.disabled = false;
       }
-      allotPatientId.value = patientId;
-      allotCount.value = currentAllotted > 0 ? currentAllotted : 5;
-      document.getElementById('allot-modal-subtitle').textContent = `Set total session count for ${name} (${patientId})`;
-      allotModal.hidden = false;
     });
   });
 
   // Open Feedback Modal
   listEl.querySelectorAll('.btn-open-feedback').forEach((btn) => {
     btn.addEventListener('click', () => {
-      const apptId = btn.dataset.apptId;
+      const caseId = btn.dataset.caseId;
       const patientId = btn.dataset.patientId;
       const name = btn.dataset.name;
 
-      fbApptId.value = apptId;
-      fbPatientId.value = patientId;
-      document.getElementById('modal-subtitle').textContent = `Feedback for ${name} (Appt #${apptId})`;
+      if (fbCaseId) fbCaseId.value = caseId;
+      if (fbPatientId) fbPatientId.value = patientId;
+      document.getElementById('modal-subtitle').textContent = `Two-part session evaluation for ${name} (${patientId})`;
 
-      // Reset form
-      fbPainRange.value = 3;
-      updatePainBadge(3);
-      fbExercises.value = '';
-      fbNotes.value = '';
+      // Reset form values
+      if (fbPainBefore) fbPainBefore.value = 4;
+      if (fbPainAfter) fbPainAfter.value = 3;
+      if (fbExercises) fbExercises.value = '';
+      if (fbNotes) fbNotes.value = '';
 
-      // Reset chip selectors
-      selectedMobility = 'Improved';
-      selectedCompliance = 'Excellent';
+      updatePainBeforeBadge(4);
+      updatePainAfterBadge(3);
+
+      selectedVitals = 'Normal / Stable';
+      selectedReadiness = 'Ready for full routine';
+      selectedMobility = 'Moderate Improvement';
+      selectedCompliance = 'Excellent (Followed HEP daily)';
       updateChipSelectors();
 
-      feedbackModal.hidden = false;
-    });
-  });
-
-  // Claim Visit / Self Assignment
-  listEl.querySelectorAll('.btn-assign-self').forEach((btn) => {
-    btn.addEventListener('click', async () => {
-      const id = btn.dataset.assignMeFor;
-      const select = listEl.querySelector(`select[data-assign-for="${id}"]`);
-      if (select && currentUser) {
-        select.value = currentUser;
-        select.dispatchEvent(new Event('change'));
-      }
-    });
-  });
-
-  // Dropdown Assignment Select
-  listEl.querySelectorAll('select[data-assign-for]').forEach((select) => {
-    select.addEventListener('change', async () => {
-      const id = select.dataset.assignFor;
-      const tagEl = listEl.querySelector(`[data-assign-tag-for="${id}"]`);
-      select.disabled = true;
-      if (tagEl) tagEl.textContent = 'Updating...';
-      try {
-        const res = await api(`/api/appointments/${encodeURIComponent(id)}/assign`, {
-          method: 'PUT',
-          body: JSON.stringify({ assignedTo: select.value || null }),
-        });
-        const appt = rawAppointments.find((a) => a.id === id);
-        if (appt) appt.assignedTo = res.assignedTo;
-        updateStats(rawAppointments);
-        filterAppointments();
-      } catch (err) {
-        alert(`Assignment failed: ${err.message}`);
-      } finally {
-        select.disabled = false;
-      }
-    });
-  });
-
-  // Save Session Notes
-  listEl.querySelectorAll('.btn-save-notes').forEach((btn) => {
-    btn.addEventListener('click', async () => {
-      const id = btn.dataset.saveFor;
-      const textarea = listEl.querySelector(`textarea[data-id="${id}"]`);
-      const syncEl = listEl.querySelector(`[data-sync-for="${id}"]`);
-      btn.disabled = true;
-      syncEl.textContent = syncLabel('pending');
-      syncEl.className = 'sync-status-badge pending';
-      try {
-        const result = await api(`/api/appointments/${encodeURIComponent(id)}/notes`, {
-          method: 'PUT',
-          body: JSON.stringify({ notes: textarea.value }),
-        });
-        const appt = rawAppointments.find((a) => a.id === id);
-        if (appt) {
-          appt.notes = textarea.value;
-          appt.notesSyncStatus = result.notesSyncStatus;
-        }
-        syncEl.textContent = syncLabel(result.notesSyncStatus);
-        syncEl.className = `sync-status-badge ${result.notesSyncStatus}`;
-      } catch (err) {
-        syncEl.textContent = syncLabel('failed');
-        syncEl.className = 'sync-status-badge failed';
-        alert(`Note save error: ${err.message}`);
-      } finally {
-        btn.disabled = false;
-      }
+      if (feedbackModal) feedbackModal.hidden = false;
     });
   });
 }
 
-function updatePainBadge(val) {
+function updatePainBeforeBadge(val) {
   const num = parseInt(val, 10);
   let category = 'Mild';
   let className = 'pain-mild';
-  if (num >= 7) {
-    category = 'Severe';
-    className = 'pain-severe';
-  } else if (num >= 4) {
-    category = 'Moderate';
-    className = 'pain-moderate';
+  if (num >= 7) { category = 'Severe'; className = 'pain-severe'; }
+  else if (num >= 4) { category = 'Moderate'; className = 'pain-moderate'; }
+  if (fbPainBeforeVal) {
+    fbPainBeforeVal.textContent = `${num} / 10 (${category})`;
+    fbPainBeforeVal.className = `pain-badge ${className}`;
   }
-  fbPainVal.textContent = `${num} / 10 (${category})`;
-  fbPainVal.className = `pain-badge ${className}`;
+}
+
+function updatePainAfterBadge(val) {
+  const num = parseInt(val, 10);
+  let category = 'Mild';
+  let className = 'pain-mild';
+  if (num >= 7) { category = 'Severe'; className = 'pain-severe'; }
+  else if (num >= 4) { category = 'Moderate'; className = 'pain-moderate'; }
+  if (fbPainAfterVal) {
+    fbPainAfterVal.textContent = `${num} / 10 (${category})`;
+    fbPainAfterVal.className = `pain-badge ${className}`;
+  }
 }
 
 function updateChipSelectors() {
-  document.querySelectorAll('.q-chip[data-q="mobility"]').forEach((chip) => {
-    chip.classList.toggle('active', chip.dataset.val === selectedMobility);
-  });
-  document.querySelectorAll('.q-chip[data-q="compliance"]').forEach((chip) => {
-    chip.classList.toggle('active', chip.dataset.val === selectedCompliance);
-  });
+  document.querySelectorAll('.q-chip[data-q="vitals"]').forEach((c) => c.classList.toggle('active', c.dataset.val === selectedVitals));
+  document.querySelectorAll('.q-chip[data-q="readiness"]').forEach((c) => c.classList.toggle('active', c.dataset.val === selectedReadiness));
+  document.querySelectorAll('.q-chip[data-q="mobility"]').forEach((c) => c.classList.toggle('active', c.dataset.val === selectedMobility));
+  document.querySelectorAll('.q-chip[data-q="compliance"]').forEach((c) => c.classList.toggle('active', c.dataset.val === selectedCompliance));
 }
 
-// Modal Listeners
-if (fbPainRange) {
-  fbPainRange.addEventListener('input', (e) => updatePainBadge(e.target.value));
-}
+if (fbPainBefore) fbPainBefore.addEventListener('input', (e) => updatePainBeforeBadge(e.target.value));
+if (fbPainAfter) fbPainAfter.addEventListener('input', (e) => updatePainAfterBadge(e.target.value));
 
 document.querySelectorAll('.q-chip').forEach((chip) => {
   chip.addEventListener('click', () => {
     const q = chip.dataset.q;
     const val = chip.dataset.val;
+    if (q === 'vitals') selectedVitals = val;
+    if (q === 'readiness') selectedReadiness = val;
     if (q === 'mobility') selectedMobility = val;
     if (q === 'compliance') selectedCompliance = val;
     updateChipSelectors();
@@ -536,25 +455,37 @@ if (btnCancelFb) btnCancelFb.addEventListener('click', () => (feedbackModal.hidd
 if (feedbackForm) {
   feedbackForm.addEventListener('submit', async (e) => {
     e.preventDefault();
-    const apptId = fbApptId.value;
+    const caseId = fbCaseId.value;
     const submitBtn = feedbackForm.querySelector('button[type="submit"]');
     submitBtn.disabled = true;
 
+    const beforeAssessment = {
+      painLevelBefore: parseInt(fbPainBefore ? fbPainBefore.value : 4, 10),
+      vitalsStatus: selectedVitals,
+      patientReadiness: selectedReadiness,
+    };
+
+    const afterSummary = {
+      painLevelAfter: parseInt(fbPainAfter ? fbPainAfter.value : 3, 10),
+      mobilityStatus: selectedMobility,
+      exercisesCompleted: fbExercises.value.trim(),
+      patientCompliance: selectedCompliance,
+      clinicalNotes: fbNotes.value.trim(),
+    };
+
     try {
-      await api(`/api/appointments/${encodeURIComponent(apptId)}/feedback`, {
+      await api(`/api/cases/${encodeURIComponent(caseId)}/feedback`, {
         method: 'POST',
         body: JSON.stringify({
-          painLevel: parseInt(fbPainRange.value, 10),
-          mobilityStatus: selectedMobility,
-          exercisesCompleted: fbExercises.value.trim(),
-          patientCompliance: selectedCompliance,
+          beforeAssessment,
+          afterSummary,
           clinicalNotes: fbNotes.value.trim(),
         }),
       });
 
       feedbackModal.hidden = true;
-      await loadAppointments();
-      alert('Feedback successfully submitted & synced to Clinicea!');
+      await loadCases();
+      alert('Session evaluation submitted & synced to Clinicea!');
     } catch (err) {
       alert(`Submission error: ${err.message}`);
     } finally {
@@ -570,45 +501,93 @@ if (allotForm) {
   allotForm.addEventListener('submit', async (e) => {
     e.preventDefault();
     const patientId = allotPatientId.value;
-    const count = parseInt(allotCount.value, 10);
-    const notesEl = document.getElementById('allot-notes');
-    const notes = notesEl ? notesEl.value : '';
+    const patientName = allotPatientName.value;
+    const patientMobile = allotPatientMobile.value;
+    const address = allotPatientAddress.value;
+    const city = allotPatientCity.value;
+    const pcode = allotPatientPcode.value;
+    const symptomsConcern = allotSymptoms.value.trim();
+    const allottedSessions = parseInt(allotCount.value, 10) || 10;
+    const instructions = document.getElementById('allot-notes')?.value.trim() || '';
 
     const submitBtn = allotForm.querySelector('button[type="submit"]');
     submitBtn.disabled = true;
 
     try {
-      await api(`/api/patients/plan/${encodeURIComponent(patientId)}`, {
+      await api('/api/cases', {
         method: 'POST',
-        body: JSON.stringify({ allottedSessions: count, notes }),
+        body: JSON.stringify({
+          patientId,
+          patientName,
+          patientMobile,
+          address,
+          city,
+          pcode,
+          symptomsConcern,
+          allottedSessions,
+          instructions,
+        }),
       });
 
       allotModal.hidden = true;
-      await loadAppointments();
-      alert('Patient enrolled successfully as an Open Task for PhysioWay!');
-
-      // If lookup input has this patient, re-trigger lookup to refresh lookup card
-      if (lookupInput && lookupInput.value.trim().toUpperCase() === patientId.toUpperCase()) {
-        lookupForm.dispatchEvent(new Event('submit'));
-      }
+      await loadCases();
+      alert(`Patient ${patientName} (${patientId}) enrolled successfully as a Home-Visit Case!`);
     } catch (err) {
-      alert(`Allotment update failed: ${err.message}`);
+      alert(`Case enrollment failed: ${err.message}`);
     } finally {
       submitBtn.disabled = false;
     }
   });
 }
 
-// Quick Demo Login Pills
-document.querySelectorAll('.btn-demo-login').forEach((btn) => {
-  btn.addEventListener('click', async () => {
-    const u = btn.dataset.user;
-    const p = btn.dataset.pass;
-    document.getElementById('username').value = u;
-    document.getElementById('password').value = p;
-    loginForm.dispatchEvent(new Event('submit'));
+// Patient Lookup Form
+if (lookupForm) {
+  lookupForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const query = lookupInput.value.trim();
+    if (!query) return;
+
+    lookupError.textContent = '';
+    lookupResult.hidden = true;
+    const submitBtn = lookupForm.querySelector('button[type="submit"]');
+    submitBtn.disabled = true;
+
+    try {
+      const data = await api(`/api/patients/lookup?id=${encodeURIComponent(query)}`);
+      const p = data.patient;
+      lookupResult.hidden = false;
+      lookupResult.innerHTML = `
+        <div class="patient-lookup-card">
+          <div class="lookup-patient-name">${p.name} <span class="patient-id-tag">${p.id}</span></div>
+          <div class="lookup-patient-details">
+            <span>📞 ${p.mobile || 'No mobile'}</span>
+            <span>📍 ${p.address || 'No address'}</span>
+            ${p.bloodGroup ? `<span>🩸 Blood Group: ${p.bloodGroup}</span>` : ''}
+          </div>
+          ${p.notes ? `<div class="lookup-notes"><strong>Notes:</strong> ${p.notes}</div>` : ''}
+          <button class="pill-btn btn-enroll-now" style="margin-top:10px">Enroll in Home-Visit Case</button>
+        </div>
+      `;
+
+      lookupResult.querySelector('.btn-enroll-now').addEventListener('click', () => {
+        allotPatientId.value = p.id;
+        allotPatientName.value = p.name;
+        allotPatientMobile.value = p.mobile || '';
+        allotPatientAddress.value = p.address || '';
+        allotPatientCity.value = '';
+        allotPatientPcode.value = '';
+        allotSymptoms.value = p.symptomsConcern || p.notes || '';
+        allotCount.value = 10;
+        document.getElementById('allot-modal-subtitle').textContent = `Enroll ${p.name} (${p.id})`;
+        allotModal.hidden = false;
+      });
+    } catch (err) {
+      lookupError.textContent = err.message || 'Patient not found';
+    } finally {
+      submitBtn.disabled = false;
+    }
   });
-});
+}
 
 async function loadTeam() {
   const data = await api('/api/team');
@@ -616,28 +595,24 @@ async function loadTeam() {
   const allotPhysioSelect = document.getElementById('allot-physio');
   if (allotPhysioSelect) {
     const physios = team.filter((m) => m.role === 'external_physio' || !m.role);
-    allotPhysioSelect.innerHTML = '<option value="">Unassigned</option>' +
+    allotPhysioSelect.innerHTML = '<option value="">-- Open Task (Unassigned Pool) --</option>' +
       physios.map((m) => `<option value="${m.username}">${m.name}</option>`).join('');
   }
 }
 
-async function loadAppointments() {
-  const date = datePicker.value || todayStr();
-  dateDisplayStr.textContent = formatDateDisplay(date);
-  const data = await api(`/api/appointments?date=${date}`);
-  modeText.textContent = data.liveMode ? 'CLINICEA LIVE' : 'MOCK DEMO';
-  modeBadge.className = `mode-badge ${data.liveMode ? 'live' : 'mock'}`;
-  if (demoTools) demoTools.hidden = data.liveMode;
-  rawAppointments = data.appointments;
-  updateStats(rawAppointments);
-  filterAppointments();
+async function loadCases() {
+  const data = await api(`/api/cases?status=${encodeURIComponent(activeFilter)}&query=${encodeURIComponent(activeQuery)}`);
+  rawCases = data.cases;
+  updateStats(rawCases);
+  renderCasesList(rawCases);
 }
 
 function startPolling() {
   if (pollTimer) clearInterval(pollTimer);
   pollTimer = setInterval(() => {
-    loadAppointments().catch(() => {});
-  }, 4000);
+    loadCases().catch(() => {});
+  }, 10000);
+}0);
 }
 
 async function simulateBooking(source, btn) {
@@ -829,15 +804,30 @@ loginForm.addEventListener('submit', async (e) => {
   const password = document.getElementById('password').value;
   try {
     const data = await api('/api/login', { method: 'POST', body: JSON.stringify({ username, password }) });
-    datePicker.value = todayStr();
     showApp(data, false);
     await loadTeam();
-    await loadAppointments();
+    await loadCases();
     startPolling();
   } catch (err) {
     loginError.textContent = err.message;
   }
 });
+
+(async function init() {
+  try {
+    const me = await api('/api/me');
+    if (me.user) {
+      showApp(me.user, me.liveMode);
+      await loadTeam();
+      await loadCases();
+      startPolling();
+    } else {
+      showLogin();
+    }
+  } catch (err) {
+    showLogin();
+  }
+})();
 
 registerForm.addEventListener('submit', async (e) => {
   e.preventDefault();

@@ -81,3 +81,50 @@ CREATE TABLE IF NOT EXISTS session (
   expire TIMESTAMP(6) NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_session_expire ON session (expire);
+
+-- Home-Visit Cases (Programme Enrolments)
+CREATE TABLE IF NOT EXISTS cases (
+  id TEXT PRIMARY KEY,
+  patient_id TEXT NOT NULL,
+  patient_name TEXT NOT NULL,
+  patient_mobile TEXT DEFAULT '',
+  address TEXT DEFAULT '',
+  city TEXT DEFAULT '',
+  pcode TEXT DEFAULT '',
+  symptoms_concern TEXT DEFAULT '',
+  allotted_sessions INT NOT NULL DEFAULT 10,
+  completed_sessions INT NOT NULL DEFAULT 0,
+  created_by TEXT NOT NULL,
+  assigned_physio TEXT REFERENCES partners (username) ON DELETE SET NULL,
+  status TEXT NOT NULL DEFAULT 'open',
+  instructions TEXT DEFAULT '',
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_cases_status ON cases (status);
+CREATE INDEX IF NOT EXISTS idx_cases_assigned_physio ON cases (assigned_physio);
+CREATE INDEX IF NOT EXISTS idx_cases_patient_id ON cases (patient_id);
+
+-- Home-Visit Sessions (Individual Visits within a Case)
+CREATE TABLE IF NOT EXISTS sessions (
+  id TEXT PRIMARY KEY,
+  case_id TEXT NOT NULL REFERENCES cases (id) ON DELETE CASCADE,
+  patient_id TEXT NOT NULL,
+  session_number INT NOT NULL,
+  scheduled_date TIMESTAMPTZ,
+  physio_username TEXT REFERENCES partners (username) ON DELETE SET NULL,
+  status TEXT NOT NULL DEFAULT 'scheduled',
+  before_assessment JSONB DEFAULT '{}'::jsonb,
+  after_summary JSONB DEFAULT '{}'::jsonb,
+  clinical_notes TEXT DEFAULT '',
+  clinicea_sync_status TEXT DEFAULT 'pending',
+  clinicea_encounter_id TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_sessions_case_id ON sessions (case_id);
+CREATE INDEX IF NOT EXISTS idx_sessions_patient_id ON sessions (patient_id);
+CREATE INDEX IF NOT EXISTS idx_sessions_status ON sessions (status);
+

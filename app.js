@@ -15,6 +15,8 @@ const { normalizeAppointment } = require('./lib/webhook-normalize');
 const store = db.isConfigured() ? require('./lib/store-pg') : require('./lib/store');
 const partners = db.isConfigured() ? require('./lib/partners-pg') : require('./lib/partners');
 const plans = db.isConfigured() ? require('./lib/plans-pg') : require('./lib/plans');
+const cases = db.isConfigured() ? require('./lib/cases-pg') : require('./lib/cases');
+const feedbackQuestions = require('./lib/feedback-questions.json');
 
 // The "Simulate booking" endpoint exists purely to demo the webhook flow without a real
 // Clinicea connection. Once a real API key is set, real bookings arrive via webhook and
@@ -533,6 +535,111 @@ app.post('/api/appointments/:id/feedback', requireAuth, requireRole(['external_p
   } catch (err) {
     await store.setNotes(req.params.id, formattedNote, 'failed');
     res.json({ ok: true, notesSyncStatus: 'failed', warning: `Saved in CareBridge. Clinicea API sync failed: ${err.message}`, plan: updatedPlan, note: formattedNote });
+  }
+});
+
+// ---------- Home-Visit Cases & Sessions API Endpoints ----------
+
+// GET /api/feedback-questions (Feedback questionnaire engine configuration)
+app.get('/api/feedback-questions', requireAuth, (req, res) => {
+  res.json({ ok: true, questionnaire: feedbackQuestions });
+});
+
+// POST /api/cases (Sales Team & CLP Doctor: Enroll patient into Home-Visit Case)
+app.post('/api/cases', requireAuth, requireRole(['sales', 'clp_doctor']), async (req, res) => {
+  const { patientId, patientName, patientMobile, address, city, pcode, symptomsConcern, allottedSessions, instructions } = req.body || {};
+  if (!patientId || !patientName) {
+    return res.status(400).json({ error: 'Please provide Patient ID and Patient Name' });
+  }
+  try {
+    const newCase = await cases.createCase({
+      patientId,
+      patientName,
+      patientMobile,
+      address,
+      city,
+      pcode,
+      symptomsConcern,
+      allottedSessions,
+      createdBy: req.session.user.username,
+      instructions,
+    });
+    res.json({ ok: true, case: newCase });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+// GET /api/cases (List cases by status: open, mine, all, completed)
+app.get('/api/cases', requireAuth, async (req, res) => {
+  const { status, query } = req.query || {};
+  try {
+    const caseList = await cases.listCases({
+      status: status || 'all',
+      physio: req.session.user.username,
+      query: query || '',
+    });
+    res.json({ ok: true, cases: caseList });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/cases/:id (Get case details and session history)
+app.get('/api/cases/:id', requireAuth, async (req, res) => {
+  try {
+    const caseObj = await cases.getCase(req.params.id);
+    if (!caseObj) return res.status(404).json({ error: 'Case not found' });
+    res.json({ ok: true, case: caseObj });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/cases/:id/claim (Physio claims open task)
+app.post('/api/cases/:id/claim', requireAuth, requireRole(['external_physio', 'clp_doctor']), async (req, res) => {
+  try {
+    const updatedCase = await cases.claimCase(req.params.id, req.session.user.username);
+    res.json({ ok: true, case: updatedCase });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+// PUT /api/cases/:id/assign (Reassign case)
+app.put('/api/cases/:id/assign', requireAuth, async (req, res) => {
+  const { assignedPhysio } = req.body || {};
+  try {
+    const updatedCase = await cases.assignCase(req.params.id, assignedPhysio);
+    res.json({ ok: true, case: updatedCase });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+// POST /api/cases/:id/feedback (Record 2-part Visit Feedback for a case)
+app.post('/api/cases/:id/feedback', requireAuth, requireRole(['external_physio', 'clp_doctor']), async (req, res) => {
+  const { beforeAssessment, afterSummary, clinicalNotes } = req.body || {};
+  try {
+    const result = await cases.recordSessionFeedback(req.params.id, {
+      beforeAssessment,
+      afterSummary,
+      clinicalNotes,
+      physioUsername: req.session.user.username,
+    });
+    res.json({ ok: true, ...result });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+// POST /api/sessions/:id/sync (Retry failed Clinicea sync for a session)
+app.post('/api/sessions/:id/sync', requireAuth, async (req, res) => {
+  try {
+    const updatedSession = await cases.retrySessionSync(req.params.id);
+    res.json({ ok: true, session: updatedSession });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
   }
 });
 

@@ -1729,5 +1729,98 @@ body {
   border-left: 3px solid var(--primary);
 }
 
+/* ----- 2-Part Feedback Modal & Case Cards Styling ----- */
+.modal-large {
+  max-width: 680px;
+}
+
+.fb-section-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--primary-dark);
+  background: rgba(14, 165, 233, 0.08);
+  padding: 8px 12px;
+  border-radius: 8px;
+  margin-bottom: 14px;
+}
+
+.symptoms-box {
+  background: #f0f9ff;
+  border: 1px solid #bae6fd;
+  border-radius: 8px;
+  padding: 10px 14px;
+  margin: 10px 0 14px 0;
+  font-size: 13px;
+  color: #0369a1;
+}
+
+.symptoms-box strong {
+  display: block;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #0284c7;
+  margin-bottom: 2px;
+}
+
+.case-status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 3px 10px;
+  border-radius: 999px;
+}
+
+.status-open {
+  background: #fef3c7;
+  color: #b45309;
+  border: 1px solid #fde68a;
+}
+
+.status-in_progress {
+  background: #e0f2fe;
+  color: #0369a1;
+  border: 1px solid #bae6fd;
+}
+
+.status-completed {
+  background: #dcfce7;
+  color: #15803d;
+  border: 1px solid #bbf7d0;
+}
+
+.btn-claim-case {
+  background: linear-gradient(135deg, #0284c7 0%, #0369a1 100%);
+  color: #ffffff;
+  font-weight: 700;
+  font-size: 13px;
+  padding: 8px 16px;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  box-shadow: 0 2px 6px rgba(2, 132, 199, 0.25);
+  transition: transform 0.15s ease;
+}
+
+.btn-claim-case:hover {
+  transform: translateY(-1px);
+}
+
+.pain-moderate {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+
 
 

@@ -1,0 +1,67 @@
+{
+  "version": "1.0",
+  "beforeAssessment": [
+    {
+      "id": "painLevelBefore",
+      "label": "1. Initial Pain Level (Scale 1–10)",
+      "type": "scale_1_10",
+      "required": true,
+      "default": 4
+    },
+    {
+      "id": "vitalsStatus",
+      "label": "2. Pre-Session Vitals & Condition",
+      "type": "single_choice",
+      "options": ["Normal / Stable", "Elevated BP / Pulse", "Fatigued", "Severe Stiffness"],
+      "required": true,
+      "default": "Normal / Stable"
+    },
+    {
+      "id": "patientReadiness",
+      "label": "3. Patient Readiness for Therapy",
+      "type": "single_choice",
+      "options": ["Ready for full routine", "Requires modified exercise intensity", "Resting / Pain flare-up"],
+      "required": true,
+      "default": "Ready for full routine"
+    }
+  ],
+  "afterSummary": [
+    {
+      "id": "painLevelAfter",
+      "label": "4. Post-Session Pain Level (Scale 1–10)",
+      "type": "scale_1_10",
+      "required": true,
+      "default": 3
+    },
+    {
+      "id": "mobilityStatus",
+      "label": "5. Post-Session Mobility & Range of Motion",
+      "type": "single_choice",
+      "options": ["Significant Improvement", "Moderate Improvement", "Stable / Unchanged", "Restricted"],
+      "required": true,
+      "default": "Moderate Improvement"
+    },
+    {
+      "id": "exercisesCompleted",
+      "label": "6. Exercises & Modalities Completed",
+      "type": "text",
+      "placeholder": "e.g. Quadriceps isometric sets 3x10, SLR 2x10, TENS therapy 15 mins",
+      "required": true
+    },
+    {
+      "id": "patientCompliance",
+      "label": "7. Patient Compliance & HEP Adherence",
+      "type": "single_choice",
+      "options": ["Excellent (Followed HEP daily)", "Moderate (Partial HEP)", "Poor (Skipped HEP)"],
+      "required": true,
+      "default": "Excellent (Followed HEP daily)"
+    },
+    {
+      "id": "clinicalNotes",
+      "label": "8. Physiotherapist Clinical Observations & Next Plan",
+      "type": "textarea",
+      "placeholder": "Clinical observations, patient feedback, and instructions for next visit...",
+      "required": false
+    }
+  ]
+}
