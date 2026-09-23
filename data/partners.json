@@ -3,18 +3,24 @@
     "username": "physio_jane",
     "password": "demo123",
     "name": "Jane Fernandes",
+    "email": "jane.demo@example.com",
+    "phone": "+910000000001",
     "allowedPatientIds": []
   },
   {
     "username": "physio_raj",
     "password": "demo123",
     "name": "Raj Malhotra",
+    "email": "raj.demo@example.com",
+    "phone": "+910000000002",
     "allowedPatientIds": []
   },
   {
     "username": "physio_meera",
     "password": "demo123",
     "name": "Meera Nair",
+    "email": "meera.demo@example.com",
+    "phone": "+910000000003",
     "allowedPatientIds": []
   }
 ]

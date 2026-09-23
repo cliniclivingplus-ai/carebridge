@@ -8,6 +8,7 @@ const rateLimit = require('express-rate-limit');
 const clinicea = require('./lib/clinicea-client');
 const db = require('./lib/db');
 const mock = require('./lib/mock-data');
+const notifications = require('./lib/notifications');
 const { normalizeAppointment } = require('./lib/webhook-normalize');
 
 // Postgres (Vercel Postgres) when DATABASE_URL is set; local JSON-file store otherwise.
@@ -232,6 +233,73 @@ app.get('/api/team', requireAuth, async (req, res) => {
   res.json({ team });
 });
 
+// ---------- New-booking notifications (email/SMS), any date -- "next month" included ----------
+// Uses appointments/getChanges rather than getAppointmentsByDate: confirmed empirically that
+// getChanges returns appointments for ANY date since a given sync time (tagged Added/Modified/
+// Deleted), not just one day -- exactly what's needed to catch a booking made far in the future
+// without scanning every future date one at a time.
+
+async function scanForNewBookings() {
+  // clinicea.getAppointmentChangesSince() already returns mock.getAppointmentChangesSince()
+  // when not live, so this runs the same code path in demo mode too -- useful for testing
+  // the notify pipeline without a real key.
+  const lastSync = (await store.getSyncState('appointments_last_sync')) || new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+  const nowIso = new Date().toISOString();
+
+  const changes = await clinicea.getAppointmentChangesSince(lastSync);
+  let notifiedCount = 0;
+
+  for (const change of changes) {
+    if (change.dataStatus === 'Deleted') {
+      await store.markDeleted(change.AppointmentID);
+      continue;
+    }
+    const saved = await store.upsertAppointment(change);
+    // Deliberately NOT limited to dataStatus === 'Added': confirmed against real data that
+    // an appointment edited shortly after creation shows as "Modified" by the time we scan,
+    // so Clinicea's own tag isn't reliable for "is this new to us." notifiedNewBooking (our
+    // own per-appointment flag) is the actual dedupe -- first time we've ever seen this
+    // physio appointment, regardless of what Clinicea currently calls it.
+    const isNewPhysioBooking = isPhysioAppointment(change) && !saved.notifiedNewBooking;
+    if (isNewPhysioBooking) {
+      const team = await partners.listTeam();
+      await notifications.notifyTeamOfNewBooking(team, toView(saved));
+      await store.markNotified(change.AppointmentID);
+      notifiedCount += 1;
+      console.log(`[scan] notified team of new booking ${change.AppointmentID} (${change.PatientName || 'unknown patient'})`);
+    }
+  }
+
+  await store.setSyncState('appointments_last_sync', nowIso);
+  return { checked: changes.length, notified: notifiedCount };
+}
+
+// For Vercel Cron (see vercel.json) -- guarded by a shared secret since cron endpoints are
+// public URLs otherwise. Run this every few minutes in production.
+app.get('/api/cron/scan-new-bookings', async (req, res) => {
+  const configured = process.env.CRON_SECRET;
+  const provided = req.headers['x-cron-secret'] || req.query.secret;
+  if (configured && provided !== configured) return res.status(404).end();
+  try {
+    const result = await scanForNewBookings();
+    res.json({ ok: true, ...result });
+  } catch (err) {
+    console.error('[scan] failed:', err);
+    res.status(502).json({ error: err.message });
+  }
+});
+
+// Manual trigger for logged-in users -- useful before Vercel Cron is set up, or to force an
+// immediate check rather than waiting for the schedule.
+app.post('/api/scan-now', requireAuth, async (req, res) => {
+  try {
+    const result = await scanForNewBookings();
+    res.json({ ok: true, ...result });
+  } catch (err) {
+    res.status(502).json({ error: err.message });
+  }
+});
+
 // ---------- Patient lookup by Clinicea unique ID ----------
 // Deliberately returns only a curated field set (name, mobile, address, blood group,
 // allergies, notes) -- whatever else Clinicea's patient record contains is never sent to
@@ -326,7 +394,17 @@ function handleAppointmentWebhook(eventType) {
     if (eventType === 'delete' || eventType === 'cancel') {
       await store.markDeleted(appt.AppointmentID);
     } else {
-      await store.upsertAppointment(appt);
+      const saved = await store.upsertAppointment(appt);
+      // Once webhooks are live this fires instantly instead of waiting for the cron scan --
+      // same notified_new_booking flag means whichever path notices it first "wins", no
+      // double notification if the cron also picks it up on the same appointment.
+      if (eventType === 'add' && isPhysioAppointment(appt) && !saved.notifiedNewBooking) {
+        const team = await partners.listTeam();
+        notifications.notifyTeamOfNewBooking(team, toView(saved)).catch((err) =>
+          console.error('[webhook] notify failed:', err.message)
+        );
+        await store.markNotified(appt.AppointmentID);
+      }
     }
     console.log(`[webhook] appointment/${eventType} -> ${appt.AppointmentID} synced to dashboard`);
     res.json({ ok: true });

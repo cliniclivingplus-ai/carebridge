@@ -365,6 +365,26 @@ datePicker.addEventListener('change', () => {
   loadAppointments().catch((err) => alert(err.message));
 });
 
+const scanNowBtn = document.getElementById('scan-now-btn');
+const scanStatus = document.getElementById('scan-status');
+if (scanNowBtn) {
+  scanNowBtn.addEventListener('click', async () => {
+    scanNowBtn.disabled = true;
+    scanStatus.hidden = false;
+    scanStatus.textContent = 'Checking Clinicea for new bookings on any date...';
+    try {
+      const result = await api('/api/scan-now', { method: 'POST' });
+      scanStatus.textContent = `Checked ${result.checked} change(s), notified team about ${result.notified} new booking(s).`;
+      await loadAppointments();
+    } catch (err) {
+      scanStatus.textContent = `Error: ${err.message}`;
+    } finally {
+      scanNowBtn.disabled = false;
+      setTimeout(() => (scanStatus.hidden = true), 6000);
+    }
+  });
+}
+
 searchInput.addEventListener('input', (e) => {
   activeQuery = e.target.value;
   filterAppointments();
@@ -396,6 +416,41 @@ mobNavItems.forEach((item) => {
     }
   });
 });
+
+// Password Show/Hide Eye Toggle
+document.querySelectorAll('.btn-toggle-pw').forEach((btn) => {
+  btn.addEventListener('click', () => {
+    const targetId = btn.dataset.target;
+    const input = document.getElementById(targetId);
+    if (!input) return;
+    const isPassword = input.type === 'password';
+    input.type = isPassword ? 'text' : 'password';
+    btn.innerHTML = isPassword
+      ? `<svg class="eye-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9.88 9.88a3 3 0 1 0 4.24 4.24"/><path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68"/><path d="M6.61 6.61A13.52 13.52 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61"/><line x1="2" y1="2" x2="22" y2="22"/></svg>`
+      : `<svg class="eye-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>`;
+  });
+});
+
+// Auth View Tabs & Switching
+const tabLogin = document.getElementById('tab-login');
+const tabRegister = document.getElementById('tab-register');
+const registerForm = document.getElementById('register-form');
+const forgotForm = document.getElementById('forgot-form');
+const linkForgotPw = document.getElementById('link-forgot-pw');
+const btnBackToLogin = document.getElementById('btn-back-to-login');
+
+function showAuthTab(tab) {
+  if (tabLogin) tabLogin.classList.toggle('active', tab === 'login');
+  if (tabRegister) tabRegister.classList.toggle('active', tab === 'register');
+  if (loginForm) loginForm.hidden = tab !== 'login';
+  if (registerForm) registerForm.hidden = tab !== 'register';
+  if (forgotForm) forgotForm.hidden = tab !== 'forgot';
+}
+
+if (tabLogin) tabLogin.addEventListener('click', () => showAuthTab('login'));
+if (tabRegister) tabRegister.addEventListener('click', () => showAuthTab('register'));
+if (linkForgotPw) linkForgotPw.addEventListener('click', () => showAuthTab('forgot'));
+if (btnBackToLogin) btnBackToLogin.addEventListener('click', () => showAuthTab('login'));
 
 if (simDoctorBtn) simDoctorBtn.addEventListener('click', () => simulateBooking('doctor', simDoctorBtn));
 if (simPatientBtn) simPatientBtn.addEventListener('click', () => simulateBooking('patient', simPatientBtn));
@@ -444,6 +499,52 @@ loginForm.addEventListener('submit', async (e) => {
     startPolling();
   } catch (err) {
     loginError.textContent = err.message;
+  }
+});
+
+registerForm.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const regError = document.getElementById('reg-error');
+  const regSuccess = document.getElementById('reg-success');
+  regError.textContent = '';
+  regSuccess.textContent = '';
+  const name = document.getElementById('reg-name').value;
+  const username = document.getElementById('reg-username').value;
+  const password = document.getElementById('reg-password').value;
+  try {
+    const data = await api('/api/register', { method: 'POST', body: JSON.stringify({ name, username, password }) });
+    regSuccess.textContent = 'Account created successfully! Logging you in...';
+    setTimeout(async () => {
+      currentUser = data.username;
+      datePicker.value = todayStr();
+      showApp(data.username, false);
+      await loadTeam();
+      await loadAppointments();
+      startPolling();
+    }, 800);
+  } catch (err) {
+    regError.textContent = err.message;
+  }
+});
+
+forgotForm.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const forgotError = document.getElementById('forgot-error');
+  const forgotSuccess = document.getElementById('forgot-success');
+  forgotError.textContent = '';
+  forgotSuccess.textContent = '';
+  const username = document.getElementById('forgot-username').value;
+  const newPassword = document.getElementById('forgot-new-password').value;
+  try {
+    const data = await api('/api/forgot-password', { method: 'POST', body: JSON.stringify({ username, newPassword }) });
+    forgotSuccess.textContent = data.message || 'Password updated! Switching to sign in...';
+    setTimeout(() => {
+      showAuthTab('login');
+      document.getElementById('username').value = username;
+      document.getElementById('password').value = newPassword;
+    }, 1200);
+  } catch (err) {
+    forgotError.textContent = err.message;
   }
 });
 
