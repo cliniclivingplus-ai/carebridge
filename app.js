@@ -136,6 +136,14 @@ function toView(a) {
   };
 }
 
+// The clinic/team operate in India; the front-end always sends an explicit local (IST) date,
+// but these server-side fallbacks only run when no date is given at all (e.g. raw API testing,
+// or the very first seed). Compute "today" in IST rather than the server's own timezone
+// (UTC on Vercel) so the fallback doesn't disagree with what "today" means for actual users.
+function todayInIndia() {
+  return new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' }); // en-CA => YYYY-MM-DD
+}
+
 let seedPromise = null;
 // Seed the store on first run so there's something to show before any webhook has fired.
 // Guarded by a module-level promise so concurrent cold-start invocations don't race each other.
@@ -144,7 +152,7 @@ function seedStoreIfEmpty() {
     seedPromise = (async () => {
       if (await store.isEmpty()) {
         const seedData = clinicea.isLiveMode()
-          ? await clinicea.getAppointmentsByDate(new Date().toISOString().slice(0, 10)).catch(() => [])
+          ? await clinicea.getAppointmentsByDate(todayInIndia()).catch(() => [])
           : mock.getAppointmentsByDate();
         for (const a of seedData) {
           await store.upsertAppointment(a);
@@ -237,7 +245,7 @@ async function refreshDateFromClinieaIfDue(date) {
 
 app.get('/api/appointments', requireAuth, async (req, res) => {
   await seedStoreIfEmpty();
-  const date = req.query.date || new Date().toISOString().slice(0, 10);
+  const date = req.query.date || todayInIndia();
   await refreshDateFromClinieaIfDue(date);
   const dayAppointments = await store.getByDate(date);
   const visible = dayAppointments.filter(isPhysioAppointment).map(toView);

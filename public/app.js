@@ -11,6 +11,7 @@ const todayBtn = document.getElementById('today-btn');
 const listEl = document.getElementById('appointments-list');
 const emptyState = document.getElementById('empty-state');
 const whoEl = document.getElementById('who');
+const userRoleBadge = document.getElementById('user-role-badge');
 const avatarInitials = document.getElementById('avatar-initials');
 const modeBadge = document.getElementById('mode-badge');
 const modeText = document.getElementById('mode-text');
@@ -32,15 +33,53 @@ const lookupInput = document.getElementById('lookup-input');
 const lookupResult = document.getElementById('lookup-result');
 const lookupError = document.getElementById('lookup-error');
 
+// Feedback Modal Elements
+const feedbackModal = document.getElementById('feedback-modal');
+const feedbackForm = document.getElementById('feedback-form');
+const closeFeedbackModal = document.getElementById('close-feedback-modal');
+const btnCancelFb = document.getElementById('btn-cancel-fb');
+const fbApptId = document.getElementById('fb-appt-id');
+const fbPatientId = document.getElementById('fb-patient-id');
+const fbPainRange = document.getElementById('fb-pain-range');
+const fbPainVal = document.getElementById('fb-pain-val');
+const fbExercises = document.getElementById('fb-exercises');
+const fbNotes = document.getElementById('fb-notes');
+
+// Allot Modal Elements
+const allotModal = document.getElementById('allot-modal');
+const allotForm = document.getElementById('allot-form');
+const closeAllotModal = document.getElementById('close-allot-modal');
+const btnCancelAllot = document.getElementById('btn-cancel-allot');
+const allotPatientId = document.getElementById('allot-patient-id');
+const allotCount = document.getElementById('allot-count');
+
 let pollTimer = null;
 let currentUser = null;
-let team = []; // [{username, name}]
+let currentUserRole = 'external_physio';
+let currentUserName = '';
+let team = []; // [{username, name, role}]
 let rawAppointments = [];
 let activeFilter = 'all'; // 'all', 'mine', 'unassigned'
 let activeQuery = '';
 
+// Active selections for feedback form
+let selectedMobility = 'Improved';
+let selectedCompliance = 'Excellent';
+
+// toISOString() converts to UTC before formatting -- in any timezone ahead of UTC (e.g. IST,
+// UTC+5:30), local midnight on day X becomes day X-1 in UTC, so slicing the date back out
+// silently rounds down to the previous day. That made "next day" a no-op (advance a day
+// locally, then get rounded straight back to the same date) and made "today" occasionally
+// wrong right after local midnight. Use local date components instead, never UTC.
+function toLocalDateStr(d) {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
 function todayStr() {
-  return new Date().toISOString().slice(0, 10);
+  return toLocalDateStr(new Date());
 }
 
 function formatDateDisplay(dateStr) {
@@ -54,7 +93,7 @@ function adjustDate(days) {
   const current = datePicker.value || todayStr();
   const d = new Date(current + 'T00:00:00');
   d.setDate(d.getDate() + days);
-  datePicker.value = d.toISOString().slice(0, 10);
+  datePicker.value = toLocalDateStr(d);
   dateDisplayStr.textContent = formatDateDisplay(datePicker.value);
   loadAppointments().catch(() => {});
 }
@@ -69,11 +108,27 @@ async function api(path, options = {}) {
   return data;
 }
 
-function showApp(username, liveMode) {
+function roleLabel(role) {
+  if (role === 'sales') return 'Sales Team';
+  if (role === 'clp_doctor') return 'CLP Doctor';
+  return 'PhysioWay';
+}
+
+function showApp(userObj, liveMode) {
   loginScreen.hidden = true;
   appScreen.hidden = false;
-  whoEl.textContent = username;
-  avatarInitials.textContent = (username || 'U').charAt(0).toUpperCase();
+  currentUser = userObj.username;
+  currentUserRole = userObj.role || 'external_physio';
+  currentUserName = userObj.name || userObj.username;
+
+  whoEl.textContent = currentUserName;
+  avatarInitials.textContent = (currentUserName || 'U').charAt(0).toUpperCase();
+
+  if (userRoleBadge) {
+    userRoleBadge.textContent = roleLabel(currentUserRole);
+    userRoleBadge.className = `role-badge role-${currentUserRole}`;
+  }
+
   modeText.textContent = liveMode ? 'LIVE CLINICEA' : 'MOCK DEMO';
   modeBadge.className = `mode-badge ${liveMode ? 'live' : 'mock'}`;
   if (demoTools) demoTools.hidden = liveMode;
@@ -123,14 +178,12 @@ function updateStats(appointments) {
 function filterAppointments() {
   let list = rawAppointments;
 
-  // Filter chips
   if (activeFilter === 'mine') {
     list = list.filter((a) => a.assignedTo === currentUser);
   } else if (activeFilter === 'unassigned') {
     list = list.filter((a) => !a.assignedTo);
   }
 
-  // Search query
   if (activeQuery) {
     const q = activeQuery.toLowerCase();
     list = list.filter((a) =>
@@ -150,6 +203,8 @@ function renderAppointmentsList(appointments) {
   listEl.innerHTML = '';
   emptyState.hidden = appointments.length > 0;
 
+  const canEditAllotment = currentUserRole === 'sales' || currentUserRole === 'clp_doctor';
+
   for (const appt of appointments) {
     const card = document.createElement('div');
     const isMine = appt.assignedTo === currentUser;
@@ -159,6 +214,12 @@ function renderAppointmentsList(appointments) {
     const end = new Date(appt.end);
     const timeStr = `${start.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} – ${end.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
     const assignedName = appt.assignedTo ? teamMemberName(appt.assignedTo) : 'Unassigned';
+
+    // Session tracker calculations
+    const plan = appt.patientPlan || { allottedSessions: 0, completedSessions: 0, remainingSessions: 0 };
+    const allotted = plan.allottedSessions || 0;
+    const completed = plan.completedSessions || 0;
+    const pct = allotted > 0 ? Math.min(100, Math.round((completed / allotted) * 100)) : 0;
 
     card.innerHTML = `
       <div class="card-header-bar">
@@ -172,6 +233,25 @@ function renderAppointmentsList(appointments) {
       <div class="patient-info">
         <div class="patient-name">${appt.patientName || 'Patient'}</div>
         <div class="practitioner-sub">Practitioner: ${appt.practitioner || 'Unassigned'}</div>
+      </div>
+
+      <!-- Session Allotment & Progress Bar -->
+      <div class="session-tracker-box">
+        <div class="session-header">
+          <span class="session-title">Session Tracker</span>
+          <span class="session-counts">${allotted > 0 ? `Completed <strong>${completed}</strong> of <strong>${allotted}</strong>` : 'No plan allotted yet'}</span>
+        </div>
+        ${allotted > 0 ? `
+          <div class="session-progress-bar">
+            <div class="session-progress-fill" style="width: ${pct}%;"></div>
+          </div>
+        ` : ''}
+        ${canEditAllotment ? `
+          <button class="btn-allot-sessions" data-patient-id="${appt.patientId || ''}" data-allotted="${allotted}" data-name="${appt.patientName || 'Patient'}">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v8"/><path d="M8 12h8"/></svg>
+            <span>${allotted > 0 ? 'Edit Session Allotment' : 'Allot Sessions (Sales / Doctor)'}</span>
+          </button>
+        ` : ''}
       </div>
 
       <div class="contact-strip">
@@ -203,9 +283,17 @@ function renderAppointmentsList(appointments) {
         </div>
       </div>
 
+      <!-- Feedback Questionnaire Action Button -->
+      <div class="feedback-action-strip">
+        <button class="btn-open-feedback" data-appt-id="${appt.id}" data-patient-id="${appt.patientId || ''}" data-name="${appt.patientName || 'Patient'}">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+          <span>Record Visit Feedback &amp; Questionnaire</span>
+        </button>
+      </div>
+
       <div class="notes-box">
         <div class="notes-label-bar">
-          <label>Session Notes</label>
+          <label>Clinicea Notes / History</label>
           <span class="sync-status-badge ${appt.notesSyncStatus}" data-sync-for="${appt.id}">${syncLabel(appt.notesSyncStatus)}</span>
         </div>
         <textarea data-id="${appt.id}" placeholder="Record visit observations, ROM, exercises, or progress...">${appt.notes || ''}</textarea>
@@ -216,7 +304,7 @@ function renderAppointmentsList(appointments) {
             <button class="tmpl-chip" data-tmpl-for="${appt.id}" data-text="Follow-up session required next week.">Follow-up</button>
           </div>
           <button class="btn-save-notes" data-save-for="${appt.id}">
-            <span>Save &amp; Sync</span>
+            <span>Save Notes</span>
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="m5 12 5 5L20 7"/></svg>
           </button>
         </div>
@@ -244,6 +332,49 @@ function attachCardEvents() {
         textarea.value = existing ? `${existing} ${btn.dataset.text}` : btn.dataset.text;
         textarea.focus();
       }
+    });
+  });
+
+  // Open Allotment Modal
+  listEl.querySelectorAll('.btn-allot-sessions').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const patientId = btn.dataset.patientId;
+      const currentAllotted = btn.dataset.allotted || 5;
+      const name = btn.dataset.name;
+      if (!patientId) {
+        alert('Cannot allot sessions: Patient Clinicea ID is missing.');
+        return;
+      }
+      allotPatientId.value = patientId;
+      allotCount.value = currentAllotted > 0 ? currentAllotted : 5;
+      document.getElementById('allot-modal-subtitle').textContent = `Set total session count for ${name} (${patientId})`;
+      allotModal.hidden = false;
+    });
+  });
+
+  // Open Feedback Modal
+  listEl.querySelectorAll('.btn-open-feedback').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const apptId = btn.dataset.apptId;
+      const patientId = btn.dataset.patientId;
+      const name = btn.dataset.name;
+
+      fbApptId.value = apptId;
+      fbPatientId.value = patientId;
+      document.getElementById('modal-subtitle').textContent = `Feedback for ${name} (Appt #${apptId})`;
+
+      // Reset form
+      fbPainRange.value = 3;
+      updatePainBadge(3);
+      fbExercises.value = '';
+      fbNotes.value = '';
+
+      // Reset chip selectors
+      selectedMobility = 'Improved';
+      selectedCompliance = 'Excellent';
+      updateChipSelectors();
+
+      feedbackModal.hidden = false;
     });
   });
 
@@ -314,6 +445,117 @@ function attachCardEvents() {
     });
   });
 }
+
+function updatePainBadge(val) {
+  const num = parseInt(val, 10);
+  let category = 'Mild';
+  let className = 'pain-mild';
+  if (num >= 7) {
+    category = 'Severe';
+    className = 'pain-severe';
+  } else if (num >= 4) {
+    category = 'Moderate';
+    className = 'pain-moderate';
+  }
+  fbPainVal.textContent = `${num} / 10 (${category})`;
+  fbPainVal.className = `pain-badge ${className}`;
+}
+
+function updateChipSelectors() {
+  document.querySelectorAll('.q-chip[data-q="mobility"]').forEach((chip) => {
+    chip.classList.toggle('active', chip.dataset.val === selectedMobility);
+  });
+  document.querySelectorAll('.q-chip[data-q="compliance"]').forEach((chip) => {
+    chip.classList.toggle('active', chip.dataset.val === selectedCompliance);
+  });
+}
+
+// Modal Listeners
+if (fbPainRange) {
+  fbPainRange.addEventListener('input', (e) => updatePainBadge(e.target.value));
+}
+
+document.querySelectorAll('.q-chip').forEach((chip) => {
+  chip.addEventListener('click', () => {
+    const q = chip.dataset.q;
+    const val = chip.dataset.val;
+    if (q === 'mobility') selectedMobility = val;
+    if (q === 'compliance') selectedCompliance = val;
+    updateChipSelectors();
+  });
+});
+
+if (closeFeedbackModal) closeFeedbackModal.addEventListener('click', () => (feedbackModal.hidden = true));
+if (btnCancelFb) btnCancelFb.addEventListener('click', () => (feedbackModal.hidden = true));
+
+if (feedbackForm) {
+  feedbackForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const apptId = fbApptId.value;
+    const submitBtn = feedbackForm.querySelector('button[type="submit"]');
+    submitBtn.disabled = true;
+
+    try {
+      await api(`/api/appointments/${encodeURIComponent(apptId)}/feedback`, {
+        method: 'POST',
+        body: JSON.stringify({
+          painLevel: parseInt(fbPainRange.value, 10),
+          mobilityStatus: selectedMobility,
+          exercisesCompleted: fbExercises.value.trim(),
+          patientCompliance: selectedCompliance,
+          clinicalNotes: fbNotes.value.trim(),
+        }),
+      });
+
+      feedbackModal.hidden = true;
+      await loadAppointments();
+      alert('Feedback successfully submitted & synced to Clinicea!');
+    } catch (err) {
+      alert(`Submission error: ${err.message}`);
+    } finally {
+      submitBtn.disabled = false;
+    }
+  });
+}
+
+if (closeAllotModal) closeAllotModal.addEventListener('click', () => (allotModal.hidden = true));
+if (btnCancelAllot) btnCancelAllot.addEventListener('click', () => (allotModal.hidden = true));
+
+if (allotForm) {
+  allotForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const patientId = allotPatientId.value;
+    const count = parseInt(allotCount.value, 10);
+    const submitBtn = allotForm.querySelector('button[type="submit"]');
+    submitBtn.disabled = true;
+
+    try {
+      await api(`/api/patients/plan/${encodeURIComponent(patientId)}`, {
+        method: 'POST',
+        body: JSON.stringify({ allottedSessions: count }),
+      });
+
+      allotModal.hidden = true;
+      await loadAppointments();
+      alert('Patient session plan updated successfully!');
+    } catch (err) {
+      alert(`Allotment update failed: ${err.message}`);
+    } finally {
+      submitBtn.disabled = false;
+    }
+  });
+}
+
+// Quick Demo Login Pills
+document.querySelectorAll('.btn-demo-login').forEach((btn) => {
+  btn.addEventListener('click', async () => {
+    const u = btn.dataset.user;
+    const p = btn.dataset.pass;
+    document.getElementById('username').value = u;
+    document.getElementById('password').value = p;
+    loginForm.dispatchEvent(new Event('submit'));
+  });
+});
 
 async function loadTeam() {
   const data = await api('/api/team');
@@ -491,9 +733,8 @@ loginForm.addEventListener('submit', async (e) => {
   const password = document.getElementById('password').value;
   try {
     const data = await api('/api/login', { method: 'POST', body: JSON.stringify({ username, password }) });
-    currentUser = data.username;
     datePicker.value = todayStr();
-    showApp(data.username, false);
+    showApp(data, false);
     await loadTeam();
     await loadAppointments();
     startPolling();
@@ -515,9 +756,8 @@ registerForm.addEventListener('submit', async (e) => {
     const data = await api('/api/register', { method: 'POST', body: JSON.stringify({ name, username, password }) });
     regSuccess.textContent = 'Account created successfully! Logging you in...';
     setTimeout(async () => {
-      currentUser = data.username;
       datePicker.value = todayStr();
-      showApp(data.username, false);
+      showApp(data, false);
       await loadTeam();
       await loadAppointments();
       startPolling();
@@ -556,14 +796,18 @@ logoutBtn.addEventListener('click', async () => {
 (async function init() {
   datePicker.value = todayStr();
   dateDisplayStr.textContent = 'Today';
-  const me = await api('/api/me');
-  if (me.user) {
-    currentUser = me.user.username;
-    showApp(me.user.username, me.liveMode);
-    await loadTeam();
-    await loadAppointments();
-    startPolling();
-  } else {
+  try {
+    const me = await api('/api/me');
+    if (me.user) {
+      showApp(me.user, me.liveMode);
+      await loadTeam();
+      await loadAppointments();
+      startPolling();
+    } else {
+      showLogin();
+    }
+  } catch (err) {
     showLogin();
   }
 })();
+
