@@ -128,6 +128,15 @@ function roleLabel(role) {
   return 'PhysioWay';
 }
 
+// Phone bottom bar: the two tab buttons mirror the first two filter chips, so they need the
+// same role-specific wording (Sales never has "My Cases").
+function updateMobileNavLabels(openLabel, mineLabel) {
+  const openSpan = document.querySelector('#mob-nav-all span');
+  const mineSpan = document.querySelector('#mob-nav-mine span');
+  if (openSpan) openSpan.textContent = openLabel;
+  if (mineSpan) mineSpan.textContent = mineLabel;
+}
+
 function updateFilterChipLabels(labels) {
   filterChips.forEach((chip) => {
     const filterKey = chip.dataset.filter;
@@ -187,6 +196,7 @@ function showApp(userObj, liveMode) {
       all: '📌 All Enrolments',
       completed: '✅ Completed Enrolments'
     });
+    updateMobileNavLabels('Pending Physio', 'Active');
   } else if (currentUserRole === 'external_physio') {
     if (bannerTitle) bannerTitle.textContent = 'Physio Care Portal';
     if (bannerSub) bannerSub.textContent = 'Browse open home-visit cases, claim patient assignments, and record session notes.';
@@ -201,6 +211,7 @@ function showApp(userObj, liveMode) {
       all: '📋 All Cases',
       completed: '✅ Completed'
     });
+    updateMobileNavLabels('Open Tasks', 'My Cases');
   } else {
     // clp_doctor
     if (bannerTitle) bannerTitle.textContent = 'Clinical Director Dashboard';
@@ -216,6 +227,7 @@ function showApp(userObj, liveMode) {
       all: '📋 All Cases',
       completed: '✅ Completed'
     });
+    updateMobileNavLabels('Unassigned', 'Assigned');
   }
 
   modeText.textContent = liveMode ? 'LIVE CLINICEA' : 'MOCK DEMO';
@@ -259,11 +271,13 @@ function assignOptionsHtml(currentAssignee) {
   return options.join('');
 }
 
+// Always called with EVERY case (not the filtered list on screen), so the counters don't
+// change when a different filter chip is selected.
 function updateStats(casesList) {
   if (statTotal) statTotal.textContent = casesList.length;
-  const openCount = casesList.filter((c) => c.status === 'open' || !c.assignedPhysio).length;
-  const activeCount = casesList.filter((c) => c.assignedPhysio && c.status !== 'completed').length;
-  const myCount = casesList.filter((c) => c.assignedPhysio === currentUser).length;
+  const openCount = casesList.filter((c) => c.status === 'open').length;
+  const activeCount = casesList.filter((c) => c.status === 'in_progress').length;
+  const myCount = casesList.filter((c) => c.assignedPhysio === currentUser && c.status !== 'completed').length;
 
   if (currentUserRole === 'sales') {
     if (statMyVisits) statMyVisits.textContent = activeCount;
@@ -683,10 +697,20 @@ async function loadTeam() {
   }
 }
 
+// For Sales/Doctor the second chip means "in progress" (assigned to any physio), not
+// "assigned to me" -- nobody assigns cases to a Sales account, so 'mine' would always be empty.
+function serverFilterFor(filter) {
+  if (filter === 'mine' && currentUserRole !== 'external_physio') return 'active';
+  return filter;
+}
+
 async function loadCases() {
-  const data = await api(`/api/cases?status=${encodeURIComponent(activeFilter)}&query=${encodeURIComponent(activeQuery)}`);
+  const [data, all] = await Promise.all([
+    api(`/api/cases?status=${encodeURIComponent(serverFilterFor(activeFilter))}&query=${encodeURIComponent(activeQuery)}`),
+    api('/api/cases?status=all'),
+  ]);
   rawCases = data.cases;
-  updateStats(rawCases);
+  updateStats(all.cases);
   renderCasesList(rawCases);
 }
 
@@ -716,6 +740,11 @@ filterChips.forEach((chip) => {
 
 mobNavItems.forEach((item) => {
   item.addEventListener('click', () => {
+    // Refresh has no filter: reload the current list instead of switching to "All".
+    if (!item.dataset.filter) {
+      loadCases().catch(() => {});
+      return;
+    }
     mobNavItems.forEach((i) => i.classList.remove('active'));
     item.classList.add('active');
     activeFilter = item.dataset.filter || 'all';
@@ -852,7 +881,7 @@ loginForm.addEventListener('submit', async (e) => {
   const password = document.getElementById('password').value;
   try {
     const data = await api('/api/login', { method: 'POST', body: JSON.stringify({ username, password }) });
-    showApp(data, false);
+    showApp(data, Boolean(data.liveMode));
     await loadTeam();
     await loadCases();
     startPolling();

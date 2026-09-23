@@ -192,7 +192,7 @@ app.post('/api/login', loginLimiter, async (req, res) => {
   const user = await partners.verifyLogin(username, password);
   if (!user) return res.status(401).json({ error: 'Invalid credentials' });
   req.session.user = user;
-  res.json({ ok: true, username: user.username, name: user.name, role: user.role });
+  res.json({ ok: true, username: user.username, name: user.name, role: user.role, liveMode: clinicea.isLiveMode() });
 });
 
 // Create New Team Member (Sales Team & CLP Doctor only)
