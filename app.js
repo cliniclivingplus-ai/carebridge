@@ -125,6 +125,19 @@ function isPhysioAppointment(appt) {
   return PHYSIO_FILTER.some((term) => haystack.includes(term));
 }
 
+// Physios never need Clinicea's internal patient ID (it's only used server-side for the EMR
+// sync), so it's stripped from every case sent to them.
+function caseForViewer(user, c) {
+  if (!c || CLINIC_STAFF.includes(user.role)) return c;
+  const { cliniceaPatientId, ...rest } = c;
+  return rest;
+}
+
+// Clinic-side staff. PhysioWay (external_physio) has no Clinicea access: every route that reads
+// from or writes to Clinicea directly is limited to these roles. Physios only work with the
+// cases Sales/Doctors create, via the /api/cases routes.
+const CLINIC_STAFF = ['sales', 'clp_doctor'];
+
 function requireRole(allowedRoles) {
   return (req, res, next) => {
     if (!req.session || !req.session.user) {
@@ -329,7 +342,7 @@ async function refreshDateFromClinieaIfDue(date) {
   }
 }
 
-app.get('/api/appointments', requireAuth, async (req, res) => {
+app.get('/api/appointments', requireAuth, requireRole(CLINIC_STAFF), async (req, res) => {
   await seedStoreIfEmpty();
   const date = req.query.date || todayInIndia();
   const viewMode = req.query.view || 'enrolled'; // 'enrolled' (default) or 'all'
@@ -410,7 +423,7 @@ app.get('/api/cron/scan-new-bookings', async (req, res) => {
 
 // Manual trigger for logged-in users -- useful before Vercel Cron is set up, or to force an
 // immediate check rather than waiting for the schedule.
-app.post('/api/scan-now', requireAuth, async (req, res) => {
+app.post('/api/scan-now', requireAuth, requireRole(CLINIC_STAFF), async (req, res) => {
   try {
     const result = await scanForNewBookings();
     res.json({ ok: true, ...result });
@@ -437,7 +450,7 @@ function toPatientLookupView(p) {
   };
 }
 
-app.get('/api/patients/lookup', requireAuth, patientLookupLimiter, async (req, res) => {
+app.get('/api/patients/lookup', requireAuth, requireRole(CLINIC_STAFF), patientLookupLimiter, async (req, res) => {
   const id = (req.query.id || '').trim();
   if (!id) return res.status(400).json({ error: 'id is required' });
   try {
@@ -453,7 +466,7 @@ app.get('/api/patients/lookup', requireAuth, patientLookupLimiter, async (req, r
   }
 });
 
-app.put('/api/appointments/:id/assign', requireAuth, async (req, res) => {
+app.put('/api/appointments/:id/assign', requireAuth, requireRole(CLINIC_STAFF), async (req, res) => {
   const { assignedTo } = req.body || {};
   if (assignedTo !== null && typeof assignedTo !== 'string') {
     return res.status(400).json({ error: 'assignedTo must be a username string or null' });
@@ -469,7 +482,7 @@ app.put('/api/appointments/:id/assign', requireAuth, async (req, res) => {
   res.json({ ok: true, assignedTo: updated.assignedTo || null });
 });
 
-app.put('/api/appointments/:id/notes', requireAuth, async (req, res) => {
+app.put('/api/appointments/:id/notes', requireAuth, requireRole(CLINIC_STAFF), async (req, res) => {
   const { notes } = req.body || {};
   if (typeof notes !== 'string') return res.status(400).json({ error: 'notes must be a string' });
 
@@ -492,7 +505,7 @@ app.put('/api/appointments/:id/notes', requireAuth, async (req, res) => {
 });
 
 // GET /api/patients/plan/:patientId
-app.get('/api/patients/plan/:patientId', requireAuth, async (req, res) => {
+app.get('/api/patients/plan/:patientId', requireAuth, requireRole(CLINIC_STAFF), async (req, res) => {
   const planInfo = await plans.getPlan(req.params.patientId);
   res.json({ plan: planInfo });
 });
@@ -509,7 +522,7 @@ app.post('/api/patients/plan/:patientId', requireAuth, requireRole(['sales', 'cl
 });
 
 // POST /api/appointments/:id/feedback (Structured Physio Feedback & Clinicea Sync)
-app.post('/api/appointments/:id/feedback', requireAuth, requireRole(['external_physio', 'clp_doctor']), async (req, res) => {
+app.post('/api/appointments/:id/feedback', requireAuth, requireRole(CLINIC_STAFF), async (req, res) => {
   const { painLevel, mobilityStatus, exercisesCompleted, patientCompliance, clinicalNotes } = req.body || {};
 
   const all = await store.getAll();
@@ -610,7 +623,7 @@ app.get('/api/cases', requireAuth, async (req, res) => {
       physio: req.session.user.username,
       query: query || '',
     });
-    res.json({ ok: true, cases: caseList });
+    res.json({ ok: true, cases: caseList.map((c) => caseForViewer(req.session.user, c)) });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -621,7 +634,7 @@ app.get('/api/cases/:id', requireAuth, async (req, res) => {
   try {
     const caseObj = await cases.getCase(req.params.id);
     if (!caseObj) return res.status(404).json({ error: 'Case not found' });
-    res.json({ ok: true, case: caseObj });
+    res.json({ ok: true, case: caseForViewer(req.session.user, caseObj) });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -631,7 +644,7 @@ app.get('/api/cases/:id', requireAuth, async (req, res) => {
 app.post('/api/cases/:id/claim', requireAuth, requireRole(['external_physio', 'clp_doctor']), async (req, res) => {
   try {
     const updatedCase = await cases.claimCase(req.params.id, req.session.user.username);
-    res.json({ ok: true, case: updatedCase });
+    res.json({ ok: true, case: caseForViewer(req.session.user, updatedCase) });
   } catch (err) {
     const status = err.message === 'Case not found' ? 404 : 409;
     res.status(status).json({ error: err.message });
@@ -662,7 +675,7 @@ app.put('/api/cases/:id/assign', requireAuth, async (req, res) => {
       }
     }
     const updatedCase = await cases.assignCase(req.params.id, assignedPhysio || null);
-    res.json({ ok: true, case: updatedCase });
+    res.json({ ok: true, case: caseForViewer(req.session.user, updatedCase) });
   } catch (err) {
     res.status(400).json({ error: err.message });
   }
@@ -687,7 +700,7 @@ app.post('/api/cases/:id/feedback', requireAuth, requireRole(['external_physio',
       clinicalNotes,
       physioUsername: req.session.user.username,
     });
-    res.json({ ok: true, ...result });
+    res.json({ ok: true, ...result, case: caseForViewer(req.session.user, result.case) });
   } catch (err) {
     res.status(400).json({ error: err.message });
   }

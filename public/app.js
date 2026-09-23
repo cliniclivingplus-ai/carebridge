@@ -196,9 +196,13 @@ function showApp(userObj, liveMode) {
 
   if (dateBar) dateBar.hidden = true;
 
+  // PhysioWay has no Clinicea access: no patient lookup and no enrolling. They only see the
+  // cases Sales/Doctors create.
+  if (lookupSection) lookupSection.hidden = currentUserRole === 'external_physio';
+
   if (currentUserRole === 'external_physio') {
     if (bannerTitle) bannerTitle.textContent = 'Physio Care Portal';
-    if (bannerSub) bannerSub.textContent = 'Browse open home-visit cases, claim patient assignments, and record session notes.';
+    if (bannerSub) bannerSub.textContent = 'See the home-visit cases set up by the clinic, take a case, and record your session notes.';
     if (statCard1) statCard1.textContent = 'Total Cases';
     if (statCard2) statCard2.textContent = 'My Claimed Cases';
     if (statCard3) statCard3.textContent = 'Available Open Cases';
@@ -209,9 +213,9 @@ function showApp(userObj, liveMode) {
       all: '📋 All Cases',
       completed: '✅ Completed'
     });
-    updateMobileNavLabels('Open Tasks', 'My Cases');
-    orderFilterChips(['open', 'mine', 'all', 'completed']);
-    setActiveFilter('open');
+    updateMobileNavLabels('Open Cases', 'My Cases');
+    orderFilterChips(['all', 'completed', 'open', 'mine']);
+    setActiveFilter('all');
   } else {
     // Sales and Doctor do the same job on this screen (enrol patients, watch progress), so they
     // get the same layout and the same words -- only the page title differs.
@@ -457,9 +461,12 @@ function renderCasesList(casesList) {
           <span class="assigned-tag" data-assign-tag-for="${item.id}">${isMine ? 'Assigned to You' : assignedName}</span>
         </div>
         <div class="assign-controls">
-          <select class="assign-select" data-assign-for="${item.id}">
-            ${assignOptionsHtml(item.assignedPhysio)}
-          </select>
+          ${(isMine && item.status !== 'completed') ? `
+            <!-- Hand over: only on your own active case (the server rejects anything else). -->
+            <select class="assign-select" data-assign-for="${item.id}" aria-label="Hand this case to another physio">
+              ${assignOptionsHtml(item.assignedPhysio)}
+            </select>
+          ` : ''}
           ${(!item.assignedPhysio || item.status === 'open') ? `
             <button class="btn-claim-case" data-claim-case="${item.id}">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m5 12 5 5L20 7"/></svg>
@@ -471,7 +478,7 @@ function renderCasesList(casesList) {
       `}
 
       <!-- Feedback Action Button -->
-      ${(canRecordFeedback && item.status !== 'completed') ? `
+      ${(canRecordFeedback && item.status !== 'completed' && (!isPhysio || isMine)) ? `
         <div class="feedback-action-strip">
           <button class="btn-open-feedback" data-case-id="${item.id}" data-patient-id="${item.patientId || ''}" data-name="${item.patientName || 'Patient'}">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
