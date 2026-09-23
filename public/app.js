@@ -216,7 +216,7 @@ function showApp(userObj, liveMode) {
     // Sales and Doctor do the same job on this screen (enrol patients, watch progress), so they
     // get the same layout and the same words -- only the page title differs.
     const isDoctor = currentUserRole === 'clp_doctor';
-    if (bannerTitle) bannerTitle.textContent = isDoctor ? 'Clinical Director Dashboard' : 'Sales Enrolment Portal';
+    if (bannerTitle) bannerTitle.textContent = isDoctor ? 'Clinical Director Dashboard' : 'Sales Enrollment Portal';
     if (bannerSub) bannerSub.textContent = isDoctor
       ? 'Enrol patients by Clinicea ID, follow every home-visit programme, and review session notes.'
       : 'Search patients by Clinicea ID, set up home visit plans, and monitor physio assignments.';
@@ -227,13 +227,13 @@ function showApp(userObj, liveMode) {
         mainContent.insertBefore(lookupSection, roleBanner.nextElementSibling);
       }
     }
-    if (statCard1) statCard1.textContent = 'Total Enrolments';
+    if (statCard1) statCard1.textContent = 'Total Enrollments';
     if (statCard2) statCard2.textContent = 'Assigned Cases';
     if (statCard3) statCard3.textContent = 'Unassigned Cases';
 
     // "Assigned" = a physio has taken it and sessions remain; "Unassigned" = no physio yet.
     updateFilterChipLabels({
-      all: '📌 All Enrolments',
+      all: '📌 All Enrollments',
       completed: '✅ Completed',
       mine: '🩺 Assigned Cases',
       open: '⏳ Unassigned Cases'
