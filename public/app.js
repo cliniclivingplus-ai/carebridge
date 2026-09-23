@@ -125,6 +125,15 @@ function roleLabel(role) {
   return 'PhysioWay';
 }
 
+function updateFilterChipLabels(labels) {
+  filterChips.forEach((chip) => {
+    const filterKey = chip.dataset.filter;
+    if (labels[filterKey]) {
+      chip.textContent = labels[filterKey];
+    }
+  });
+}
+
 function showApp(userObj, liveMode) {
   loginScreen.hidden = true;
   appScreen.hidden = false;
@@ -145,6 +154,67 @@ function showApp(userObj, liveMode) {
     teamSettingsBtn.hidden = !(currentUserRole === 'sales' || currentUserRole === 'clp_doctor');
   }
 
+  // Dynamic Role UI Adaptations
+  const bannerTitle = document.getElementById('role-banner-title');
+  const bannerSub = document.getElementById('role-banner-sub');
+  const dateBar = document.querySelector('.date-bar');
+  const lookupSection = document.querySelector('.lookup-section');
+  const statCard1 = document.querySelector('.stats-grid .stat-card:nth-child(1) .stat-label');
+  const statCard2 = document.querySelector('.stats-grid .stat-card:nth-child(2) .stat-label');
+  const statCard3 = document.querySelector('.stats-grid .stat-card:nth-child(3) .stat-label');
+
+  if (currentUserRole === 'sales') {
+    if (bannerTitle) bannerTitle.textContent = 'Sales Enrolment Portal';
+    if (bannerSub) bannerSub.textContent = 'Search patients by Clinicea ID, set up home visit plans, and monitor physio assignments.';
+    if (dateBar) dateBar.hidden = true;
+    if (lookupSection) {
+      const mainContent = document.querySelector('.main-content');
+      const roleBanner = document.getElementById('role-banner');
+      if (mainContent && roleBanner && mainContent.children[1] !== lookupSection) {
+        mainContent.insertBefore(lookupSection, roleBanner.nextElementSibling);
+      }
+    }
+    if (statCard1) statCard1.textContent = 'Total Enrolments';
+    if (statCard2) statCard2.textContent = 'Active Enrolments';
+    if (statCard3) statCard3.textContent = 'Pending Physio';
+
+    updateFilterChipLabels({
+      open: '⏳ Pending Physio',
+      mine: '🩺 Active Enrolments',
+      all: '📌 All Enrolments',
+      completed: '✅ Completed Enrolments'
+    });
+  } else if (currentUserRole === 'external_physio') {
+    if (bannerTitle) bannerTitle.textContent = 'Physio Care Portal';
+    if (bannerSub) bannerSub.textContent = 'Browse open home-visit cases, claim patient assignments, and record session notes.';
+    if (dateBar) dateBar.hidden = false;
+    if (statCard1) statCard1.textContent = 'Total Cases';
+    if (statCard2) statCard2.textContent = 'My Claimed Cases';
+    if (statCard3) statCard3.textContent = 'Available Open Cases';
+
+    updateFilterChipLabels({
+      open: '🔓 Open Cases (Claimable)',
+      mine: '👤 My Cases',
+      all: '📋 All Cases',
+      completed: '✅ Completed'
+    });
+  } else {
+    // clp_doctor
+    if (bannerTitle) bannerTitle.textContent = 'Clinical Director Dashboard';
+    if (bannerSub) bannerSub.textContent = 'Full clinical oversight across patient plans, physio assignments, and consultations.';
+    if (dateBar) dateBar.hidden = false;
+    if (statCard1) statCard1.textContent = 'Total Cases';
+    if (statCard2) statCard2.textContent = 'Assigned Cases';
+    if (statCard3) statCard3.textContent = 'Unassigned Cases';
+
+    updateFilterChipLabels({
+      open: '🔓 Unassigned Cases',
+      mine: '🩺 Assigned Cases',
+      all: '📋 All Cases',
+      completed: '✅ Completed'
+    });
+  }
+
   modeText.textContent = liveMode ? 'LIVE CLINICEA' : 'MOCK DEMO';
   modeBadge.className = `mode-badge ${liveMode ? 'live' : 'mock'}`;
   if (demoTools) demoTools.hidden = liveMode;
@@ -153,6 +223,9 @@ function showApp(userObj, liveMode) {
 function showLogin() {
   loginScreen.hidden = false;
   appScreen.hidden = true;
+  currentUser = null;
+  currentUserRole = null;
+  currentUserName = null;
   if (pollTimer) clearInterval(pollTimer);
 }
 
@@ -186,9 +259,16 @@ function assignOptionsHtml(currentAssignee) {
 function updateStats(casesList) {
   if (statTotal) statTotal.textContent = casesList.length;
   const openCount = casesList.filter((c) => c.status === 'open' || !c.assignedPhysio).length;
+  const activeCount = casesList.filter((c) => c.assignedPhysio && c.status !== 'completed').length;
   const myCount = casesList.filter((c) => c.assignedPhysio === currentUser).length;
-  if (statMyVisits) statMyVisits.textContent = myCount;
-  if (statUnassigned) statUnassigned.textContent = openCount;
+
+  if (currentUserRole === 'sales') {
+    if (statMyVisits) statMyVisits.textContent = activeCount;
+    if (statUnassigned) statUnassigned.textContent = openCount;
+  } else {
+    if (statMyVisits) statMyVisits.textContent = myCount;
+    if (statUnassigned) statUnassigned.textContent = openCount;
+  }
 }
 
 function filterAppointments() {
@@ -835,10 +915,17 @@ forgotForm.addEventListener('submit', async (e) => {
   }
 });
 
-logoutBtn.addEventListener('click', async () => {
-  await api('/api/logout', { method: 'POST' });
-  showLogin();
-});
+if (logoutBtn) {
+  logoutBtn.addEventListener('click', async () => {
+    try {
+      await api('/api/logout', { method: 'POST' });
+    } catch (err) {
+      console.warn('Logout API warning:', err);
+    } finally {
+      showLogin();
+    }
+  });
+}
 
 // Profile & Account Settings Modal Listeners
 const profileModal = document.getElementById('profile-modal');
