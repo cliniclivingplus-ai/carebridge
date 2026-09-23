@@ -247,8 +247,10 @@ function showApp(userObj, liveMode) {
     setActiveFilter('all');
   }
 
-  modeText.textContent = liveMode ? 'LIVE CLINICEA' : 'MOCK DEMO';
-  modeBadge.className = `mode-badge ${liveMode ? 'live' : 'mock'}`;
+  // The live site is always on Clinicea, so a badge there says nothing; only flag demo data.
+  modeBadge.hidden = Boolean(liveMode);
+  modeText.textContent = 'DEMO DATA';
+  modeBadge.className = 'mode-badge mock';
   if (demoTools) demoTools.hidden = liveMode;
 }
 
