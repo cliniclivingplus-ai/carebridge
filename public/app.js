@@ -10,6 +10,7 @@ const modeBadge = document.getElementById('mode-badge');
 const logoutBtn = document.getElementById('logout-btn');
 const simOwnClientBtn = document.getElementById('sim-own-client-btn');
 const simOtherClientBtn = document.getElementById('sim-other-client-btn');
+const demoTools = document.getElementById('demo-tools');
 
 let pollTimer = null;
 
@@ -33,6 +34,9 @@ function showApp(username, liveMode) {
   whoEl.textContent = username;
   modeBadge.textContent = liveMode ? 'Live Clinicea data' : 'Mock demo data';
   modeBadge.className = `badge ${liveMode ? 'live' : 'mock'}`;
+  // The simulate-booking endpoint doesn't exist at all once live (see app.js server-side) --
+  // hide the panel so there's nothing to click that would just 404.
+  demoTools.hidden = liveMode;
 }
 
 function showLogin() {
@@ -129,6 +133,7 @@ async function loadAppointments() {
   const data = await api(`/api/appointments?date=${date}`);
   modeBadge.textContent = data.liveMode ? 'Live Clinicea data' : 'Mock demo data';
   modeBadge.className = `badge ${data.liveMode ? 'live' : 'mock'}`;
+  demoTools.hidden = data.liveMode;
   renderAppointments(data.appointments);
 }
 
