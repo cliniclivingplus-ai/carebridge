@@ -1,0 +1,8 @@
+[
+  {
+    "username": "physio_jane",
+    "password": "demo123",
+    "name": "Jane (PhysioCare Partner)",
+    "allowedPatientIds": ["pat-501"]
+  }
+]

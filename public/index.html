@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Physiotherapy Partner Dashboard</title>
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div id="login-screen" class="screen">
+    <form id="login-form" class="card">
+      <h1>Physiotherapy Partner Dashboard</h1>
+      <p class="subtitle">Sign in to view today's physiotherapy appointments.</p>
+      <label>Username</label>
+      <input type="text" id="username" autocomplete="username" required />
+      <label>Password</label>
+      <input type="password" id="password" autocomplete="current-password" required />
+      <button type="submit">Sign in</button>
+      <p id="login-error" class="error"></p>
+    </form>
+  </div>
+
+  <div id="app-screen" class="screen" hidden>
+    <header>
+      <h1>Physiotherapy Appointments</h1>
+      <div class="header-right">
+        <span id="mode-badge" class="badge"></span>
+        <input type="date" id="date-picker" />
+        <span id="who"></span>
+        <button id="logout-btn" class="link-btn">Log out</button>
+      </div>
+    </header>
+
+    <main>
+      <div id="demo-tools" class="demo-tools">
+        <strong>Demo: simulate Clinicea sending a webhook</strong>
+        <p>This account is scoped to one client (Anitha Kumar) only. Simulate a booking for her &mdash; it should appear below. Simulate a booking for a different client &mdash; it should NOT appear, proving the access restriction works.</p>
+        <div class="demo-buttons">
+          <button id="sim-own-client-btn" type="button">Simulate: booking for Anitha Kumar (my client)</button>
+          <button id="sim-other-client-btn" type="button">Simulate: booking for a different client</button>
+        </div>
+      </div>
+
+      <div id="empty-state" class="empty-state" hidden>No physiotherapy appointments for this date.</div>
+      <div id="appointments-list"></div>
+    </main>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

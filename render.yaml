@@ -1,0 +1,31 @@
+databases:
+  - name: clinicea-physio-db
+    plan: free
+    databaseName: clinicea_physio
+    user: clinicea_physio
+
+services:
+  - type: web
+    name: clinicea-physio-dashboard
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    # Runs the DB migration on every deploy, then starts the server. Safe to run repeatedly.
+    startCommand: npm run db:migrate && npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        fromDatabase:
+          name: clinicea-physio-db
+          property: connectionString
+      - key: SESSION_SECRET
+        generateValue: true
+      - key: WEBHOOK_SECRET
+        generateValue: true
+      - key: CLINICEA_API_KEY
+        sync: false # set this manually in the Render dashboard once you have the real key
+      - key: CLINICEA_BASE_URL
+        value: https://api.clinicea.com
+      - key: PHYSIO_SERVICE_FILTER
+        value: physio
