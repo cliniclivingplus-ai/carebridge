@@ -18,6 +18,7 @@ const partners = db.isConfigured() ? require('./lib/partners-pg') : require('./l
 const plans = db.isConfigured() ? require('./lib/plans-pg') : require('./lib/plans');
 const cases = db.isConfigured() ? require('./lib/cases-pg') : require('./lib/cases');
 const feedbackQuestions = require('./lib/feedback-questions.json');
+const { validateFeedback } = require('./lib/feedback-validate');
 
 // The "Simulate booking" endpoint exists purely to demo the webhook flow without a real
 // Clinicea connection. Once a real API key is set, real bookings arrive via webhook and
@@ -683,8 +684,14 @@ app.put('/api/cases/:id/assign', requireAuth, async (req, res) => {
 
 // POST /api/cases/:id/feedback (Record 2-part Visit Feedback for a case)
 app.post('/api/cases/:id/feedback', requireAuth, requireRole(['external_physio', 'clp_doctor']), async (req, res) => {
-  const { beforeAssessment, afterSummary, clinicalNotes } = req.body || {};
   const user = req.session.user;
+  let feedback;
+  try {
+    // Same question file the form is built from; rejects missing/unknown answers.
+    feedback = validateFeedback(req.body);
+  } catch (err) {
+    return res.status(400).json({ error: err.message });
+  }
   try {
     const existing = await cases.getCase(req.params.id);
     if (!existing) return res.status(404).json({ error: 'Case not found' });
@@ -695,9 +702,10 @@ app.post('/api/cases/:id/feedback', requireAuth, requireRole(['external_physio',
       return res.status(403).json({ error: 'Only the physio assigned to this case can record its sessions' });
     }
     const result = await cases.recordSessionFeedback(req.params.id, {
-      beforeAssessment,
-      afterSummary,
-      clinicalNotes,
+      beforeAssessment: feedback.beforeAssessment,
+      afterSummary: feedback.afterSummary,
+      clinicalNotes: feedback.clinicalNotes,
+      sessionDate: feedback.sessionDateTime,
       physioUsername: req.session.user.username,
     });
     res.json({ ok: true, ...result, case: caseForViewer(req.session.user, result.case) });

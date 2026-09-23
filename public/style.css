@@ -1973,3 +1973,245 @@ body {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
+
+/* ---------- Session assessment form (built from lib/feedback-questions.json) ---------- */
+.fq-section + .fq-section {
+  margin-top: 22px;
+}
+
+.fq-section-desc {
+  margin: -6px 0 14px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.fq {
+  margin-bottom: 18px;
+  border-radius: var(--radius-sm);
+  transition: box-shadow 0.2s ease;
+}
+
+.fq.fq-missing {
+  box-shadow: 0 0 0 2px var(--danger-text);
+}
+
+.fq-label {
+  margin-bottom: 8px;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.fq-required {
+  color: var(--danger-text);
+}
+
+.fq input[type="date"],
+.fq input[type="time"],
+.fq input[type="number"],
+.fq input[type="text"],
+.fq textarea,
+.fq select {
+  width: 100%;
+  min-height: 44px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text-main);
+  font: inherit;
+  font-size: 14px;
+  box-sizing: border-box;
+}
+
+.fq textarea {
+  resize: vertical;
+}
+
+.fq input:focus-visible,
+.fq textarea:focus-visible,
+.fq select:focus-visible {
+  outline: 2px solid var(--border-focus);
+  outline-offset: 1px;
+}
+
+/* Full-width tappable option rows, like the PhysioWay form */
+.fq-options {
+  display: grid;
+  gap: 8px;
+}
+
+.fq-option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.fq-option input {
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  flex-shrink: 0;
+  accent-color: var(--primary);
+}
+
+.fq-option:has(input:checked) {
+  border-color: var(--primary);
+  background: var(--primary-light);
+}
+
+.fq-other {
+  margin-top: 0;
+}
+
+/* 0-10 pain scale: numbered circles */
+.fq-scale {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.fq-scale-dot {
+  position: relative;
+  cursor: pointer;
+}
+
+.fq-scale-dot input {
+  position: absolute;
+  opacity: 0;
+  width: 1px;
+  height: 1px;
+}
+
+.fq-scale-dot span {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  background: var(--surface);
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.fq-scale-dot input:checked + span {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: #ffffff;
+}
+
+.fq-scale-dot input:focus-visible + span {
+  outline: 2px solid var(--border-focus);
+  outline-offset: 2px;
+}
+
+.fq-scale-ends {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 6px;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+/* Exercises prescribed */
+.fq-exercises {
+  display: grid;
+  gap: 10px;
+}
+
+.fq-exercise {
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+}
+
+.fq-exercise-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+  font-size: 13px;
+}
+
+.fq-remove {
+  color: var(--danger-text);
+  min-height: 32px;
+}
+
+.fq-sub {
+  display: block;
+  margin-bottom: 8px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+}
+
+.fq-sub input,
+.fq-sub select {
+  margin-top: 4px;
+  text-transform: none;
+  letter-spacing: normal;
+  font-weight: 400;
+}
+
+.fq-exercise-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.fq-add {
+  width: 100%;
+  min-height: 44px;
+  margin-top: 10px;
+  border: none;
+  border-radius: 999px;
+  background: var(--primary-light);
+  color: var(--primary-dark);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+/* Final confirmation */
+.fq-confirm {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin: 8px 0 4px;
+  padding: 12px;
+  border: 1px solid var(--pending-text);
+  border-radius: var(--radius-sm);
+  background: var(--pending-bg);
+  font-size: 13px;
+  line-height: 1.45;
+  cursor: pointer;
+}
+
+.fq-confirm input {
+  width: 18px;
+  height: 18px;
+  margin: 1px 0 0;
+  flex-shrink: 0;
+  accent-color: var(--primary);
+}
+
+/* Multi-line answers (e.g. several exercises) in the session details view */
+.session-answer strong {
+  white-space: pre-line;
+}

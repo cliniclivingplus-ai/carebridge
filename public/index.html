@@ -210,103 +210,35 @@
     </nav>
   </div>
 
-  <!-- 2-Part Structured Visit Feedback Modal -->
+  <!-- Session assessment modal. The questions are built from lib/feedback-questions.json
+       (see renderFeedbackForm in app.js), so they can change without touching this file. -->
   <div id="feedback-modal" class="modal-backdrop" hidden>
-    <div class="modal-card glass-card modal-large">
+    <div class="modal-card glass-card modal-large" role="dialog" aria-modal="true" aria-labelledby="feedback-modal-title">
       <div class="modal-header">
         <div>
-          <h3>Record Visit Feedback</h3>
-          <p id="modal-subtitle">Two-part home-visit session evaluation &amp; Clinicea sync</p>
+          <h3 id="feedback-modal-title">Session assessment</h3>
+          <p id="modal-subtitle"></p>
         </div>
-        <button id="close-feedback-modal" class="close-btn" type="button">&times;</button>
+        <button id="close-feedback-modal" class="close-btn" type="button" aria-label="Close">&times;</button>
       </div>
 
-      <form id="feedback-form">
+      <form id="feedback-form" novalidate>
         <input type="hidden" id="fb-case-id" />
         <input type="hidden" id="fb-patient-id" />
 
-        <!-- Feedback Sections Header -->
-        <div class="fb-section-title">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-          <span>PART 1: Pre-Session Baseline Assessment</span>
-        </div>
+        <div id="fb-questions"></div>
 
-        <div class="q-group">
-          <label>1. Initial Pain Level at Arrival (Scale 1–10)</label>
-          <div class="pain-rating-bar">
-            <input type="range" id="fb-pain-before" min="1" max="10" value="4" />
-            <span id="fb-pain-before-val" class="pain-badge pain-moderate">4 / 10 (Moderate)</span>
-          </div>
-        </div>
+        <label class="fq-confirm">
+          <input type="checkbox" id="fb-confirm" />
+          <span id="fb-confirm-text"></span>
+        </label>
 
-        <div class="q-group">
-          <label>2. Pre-Session Vitals &amp; Condition</label>
-          <div class="status-chips-selector">
-            <button type="button" class="q-chip active" data-q="vitals" data-val="Normal / Stable">Normal / Stable</button>
-            <button type="button" class="q-chip" data-q="vitals" data-val="Elevated BP / Pulse">Elevated BP / Pulse</button>
-            <button type="button" class="q-chip" data-q="vitals" data-val="Fatigued">Fatigued</button>
-            <button type="button" class="q-chip" data-q="vitals" data-val="Severe Stiffness">Severe Stiffness</button>
-          </div>
-        </div>
-
-        <div class="q-group">
-          <label>3. Patient Readiness for Therapy</label>
-          <div class="status-chips-selector">
-            <button type="button" class="q-chip active" data-q="readiness" data-val="Ready for full routine">Ready for full routine</button>
-            <button type="button" class="q-chip" data-q="readiness" data-val="Requires modified intensity">Modified intensity</button>
-            <button type="button" class="q-chip" data-q="readiness" data-val="Pain flare-up">Pain flare-up</button>
-          </div>
-        </div>
-
-        <hr class="modal-divider" />
-
-        <div class="fb-section-title">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
-          <span>PART 2: Post-Session Summary &amp; Outcome</span>
-        </div>
-
-        <div class="q-group">
-          <label>4. Post-Session Pain Level (Scale 1–10)</label>
-          <div class="pain-rating-bar">
-            <input type="range" id="fb-pain-after" min="1" max="10" value="3" />
-            <span id="fb-pain-after-val" class="pain-badge pain-mild">3 / 10 (Mild)</span>
-          </div>
-        </div>
-
-        <div class="q-group">
-          <label>5. Post-Session Mobility &amp; ROM Status</label>
-          <div class="status-chips-selector">
-            <button type="button" class="q-chip active" data-q="mobility" data-val="Significant Improvement">Significant</button>
-            <button type="button" class="q-chip" data-q="mobility" data-val="Moderate Improvement">Moderate</button>
-            <button type="button" class="q-chip" data-q="mobility" data-val="Stable / Unchanged">Stable</button>
-            <button type="button" class="q-chip" data-q="mobility" data-val="Restricted">Restricted</button>
-          </div>
-        </div>
-
-        <div class="q-group">
-          <label>6. Exercises &amp; Modalities Completed Today</label>
-          <input type="text" id="fb-exercises" placeholder="e.g. Quadriceps sets 3x10, SLR 2x10, TENS therapy 15 mins" required />
-        </div>
-
-        <div class="q-group">
-          <label>7. Patient Compliance &amp; Home Exercise Adherence</label>
-          <div class="status-chips-selector">
-            <button type="button" class="q-chip active" data-q="compliance" data-val="Excellent (Followed HEP daily)">Excellent</button>
-            <button type="button" class="q-chip" data-q="compliance" data-val="Moderate (Partial HEP)">Moderate</button>
-            <button type="button" class="q-chip" data-q="compliance" data-val="Poor (Skipped HEP)">Poor</button>
-          </div>
-        </div>
-
-        <div class="q-group">
-          <label>8. Physiotherapist Clinical Observations &amp; Next Plan</label>
-          <textarea id="fb-notes" rows="3" placeholder="Enter observations, recommendations for the doctor, or care adjustments..."></textarea>
-        </div>
+        <p id="fb-error" class="error" role="alert"></p>
 
         <div class="modal-footer">
           <button type="button" id="btn-cancel-fb" class="btn-secondary">Cancel</button>
           <button type="submit" class="btn-primary">
-            <span>Save &amp; Sync Session to Clinicea</span>
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="m5 12 5 5L20 7"/></svg>
+            <span>Save session assessment</span>
           </button>
         </div>
       </form>

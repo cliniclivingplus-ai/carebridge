@@ -1,67 +1,85 @@
 {
-  "version": "1.0",
-  "beforeAssessment": [
+  "version": "2.0",
+  "source": "PhysioWay session assessment form (physio.physysova.com), transcribed from their screen recording",
+  "confirmation": "I confirm that the patient and session time above are correct, and that I personally completed this session.",
+  "sections": [
     {
-      "id": "painLevelBefore",
-      "label": "1. Initial Pain Level (Scale 1–10)",
-      "type": "scale_1_10",
-      "required": true,
-      "default": 4
+      "id": "beforeAssessment",
+      "title": "Session details",
+      "questions": [
+        { "id": "sessionDate", "label": "Date", "type": "date", "required": true },
+        { "id": "sessionTime", "label": "Time", "type": "time", "required": true },
+        { "id": "durationMinutes", "label": "Duration (minutes)", "type": "number", "required": true, "min": 5, "max": 240, "default": 60 },
+        { "id": "painLevelBefore", "label": "Pain score before session", "type": "scale_0_10", "required": true }
+      ]
     },
     {
-      "id": "vitalsStatus",
-      "label": "2. Pre-Session Vitals & Condition",
-      "type": "single_choice",
-      "options": ["Normal / Stable", "Elevated BP / Pulse", "Fatigued", "Severe Stiffness"],
-      "required": true,
-      "default": "Normal / Stable"
-    },
-    {
-      "id": "patientReadiness",
-      "label": "3. Patient Readiness for Therapy",
-      "type": "single_choice",
-      "options": ["Ready for full routine", "Requires modified exercise intensity", "Resting / Pain flare-up"],
-      "required": true,
-      "default": "Ready for full routine"
-    }
-  ],
-  "afterSummary": [
-    {
-      "id": "painLevelAfter",
-      "label": "4. Post-Session Pain Level (Scale 1–10)",
-      "type": "scale_1_10",
-      "required": true,
-      "default": 3
-    },
-    {
-      "id": "mobilityStatus",
-      "label": "5. Post-Session Mobility & Range of Motion",
-      "type": "single_choice",
-      "options": ["Significant Improvement", "Moderate Improvement", "Stable / Unchanged", "Restricted"],
-      "required": true,
-      "default": "Moderate Improvement"
-    },
-    {
-      "id": "exercisesCompleted",
-      "label": "6. Exercises & Modalities Completed",
-      "type": "text",
-      "placeholder": "e.g. Quadriceps isometric sets 3x10, SLR 2x10, TENS therapy 15 mins",
-      "required": true
-    },
-    {
-      "id": "patientCompliance",
-      "label": "7. Patient Compliance & HEP Adherence",
-      "type": "single_choice",
-      "options": ["Excellent (Followed HEP daily)", "Moderate (Partial HEP)", "Poor (Skipped HEP)"],
-      "required": true,
-      "default": "Excellent (Followed HEP daily)"
-    },
-    {
-      "id": "clinicalNotes",
-      "label": "8. Physiotherapist Clinical Observations & Next Plan",
-      "type": "textarea",
-      "placeholder": "Clinical observations, patient feedback, and instructions for next visit...",
-      "required": false
+      "id": "afterSummary",
+      "title": "Post-session assessment",
+      "description": "These notes become the patient-friendly session summary.",
+      "questions": [
+        {
+          "id": "techniquesUsed",
+          "label": "Techniques used today",
+          "type": "multi_choice",
+          "required": true,
+          "allowOther": true,
+          "options": ["Manual Therapy", "Dry Needling", "Ultrasound", "TENS/EMS", "Therapeutic Exercises", "Stretching", "Taping/Strapping", "Heat Therapy", "Cold Therapy", "Cupping", "Mobilization"]
+        },
+        { "id": "treatmentDetails", "label": "Details of treatment given", "type": "textarea", "required": true },
+        {
+          "id": "patientResponse",
+          "label": "Patient's response during treatment",
+          "type": "single_choice",
+          "required": true,
+          "options": ["Tolerated Well", "Reported Relief", "Mild Discomfort", "Significant Pain", "Mixed Response"]
+        },
+        { "id": "adverseReactions", "label": "Any adverse reactions during session?", "type": "single_choice", "required": true, "options": ["Yes", "No"] },
+        { "id": "painLevelAfter", "label": "Pain score after session", "type": "scale_0_10", "required": true },
+        {
+          "id": "postSessionInstructions",
+          "label": "Post-session instructions given",
+          "type": "multi_choice",
+          "required": true,
+          "allowOther": true,
+          "options": ["Apply Ice", "Apply Heat", "Rest the area", "Avoid specific movements", "Continue home exercises", "Elevate limb"]
+        },
+        { "id": "postSessionInstructionDetails", "label": "Details of post-session instructions", "type": "textarea", "required": false },
+        {
+          "id": "exercisesPrescribed",
+          "label": "Exercises prescribed",
+          "type": "exercise_list",
+          "required": true,
+          "frequencyOptions": ["Once daily", "Twice daily", "Three times daily", "Alternate days", "3 times a week", "Weekly"]
+        },
+        {
+          "id": "patientUnderstanding",
+          "label": "Patient confirmation of understanding",
+          "type": "single_choice",
+          "required": true,
+          "options": ["Yes - Demonstrated back", "Yes - Verbal confirmation", "No - Needs follow-up"]
+        },
+        {
+          "id": "progressAssessment",
+          "label": "Progress assessment this session",
+          "type": "single_choice",
+          "required": true,
+          "options": ["On Track", "Progressing Well", "Plateau", "Regression", "First Session"]
+        },
+        { "id": "clinicalReasoning", "label": "Clinical reasoning and observations", "type": "textarea", "required": false },
+        { "id": "diagnosisChange", "label": "Any change in diagnosis or treatment direction?", "type": "single_choice", "required": false, "options": ["Yes", "No"] },
+        { "id": "nextSessionPlan", "label": "Plan for next session", "type": "textarea", "required": true },
+        {
+          "id": "redFlags",
+          "label": "Red flags observed",
+          "type": "multi_choice",
+          "required": false,
+          "exclusiveOption": "None",
+          "options": ["Unexplained weight loss", "Fever with pain", "Constant night pain worsening", "Bladder or bowel dysfunction", "Progressive neurological deficit", "Suspected fracture", "Chest pain or breathlessness", "None"]
+        },
+        { "id": "referToDoctor", "label": "Refer to doctor?", "type": "single_choice", "required": false, "options": ["Yes", "No"] },
+        { "id": "clinicalNotes", "label": "Additional notes", "type": "textarea", "required": false }
+      ]
     }
   ]
 }

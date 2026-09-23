@@ -40,12 +40,9 @@ const closeFeedbackModal = document.getElementById('close-feedback-modal');
 const btnCancelFb = document.getElementById('btn-cancel-fb');
 const fbCaseId = document.getElementById('fb-case-id');
 const fbPatientId = document.getElementById('fb-patient-id');
-const fbPainBefore = document.getElementById('fb-pain-before');
-const fbPainBeforeVal = document.getElementById('fb-pain-before-val');
-const fbPainAfter = document.getElementById('fb-pain-after');
-const fbPainAfterVal = document.getElementById('fb-pain-after-val');
-const fbExercises = document.getElementById('fb-exercises');
-const fbNotes = document.getElementById('fb-notes');
+const fbQuestions = document.getElementById('fb-questions');
+const fbConfirm = document.getElementById('fb-confirm');
+const fbError = document.getElementById('fb-error');
 
 // Allot Modal Elements
 const allotModal = document.getElementById('allot-modal');
@@ -71,11 +68,6 @@ let rawCases = [];
 let activeFilter = 'open'; // 'open', 'mine', 'all', 'completed'
 let activeQuery = '';
 
-// Active selections for feedback form
-let selectedVitals = 'Normal / Stable';
-let selectedReadiness = 'Ready for full routine';
-let selectedMobility = 'Moderate Improvement';
-let selectedCompliance = 'Excellent (Followed HEP daily)';
 
 // toISOString() converts to UTC before formatting -- in any timezone ahead of UTC (e.g. IST,
 // UTC+5:30), local midnight on day X becomes day X-1 in UTC, so slicing the date back out
@@ -315,26 +307,65 @@ function escapeHtml(value) {
   return String(value ?? '').replace(/[&<>"']/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[ch]);
 }
 
-// Question id -> label, from lib/feedback-questions.json, so session details show the same
-// wording as the feedback form (and follow along when the questions change).
+// The session assessment questions (lib/feedback-questions.json). The form, the session
+// details view and the labels all come from this, so changing the questions needs no code.
+let questionnaire = { sections: [] };
 let questionLabels = {};
 let questionOrder = [];
-let questionLabelsLoaded = null;
+let questionnaireLoaded = null;
+
+// Answers saved with the first version of the form, so older sessions still read properly.
+const LEGACY_LABELS = {
+  vitalsStatus: 'Pre-session vitals & condition',
+  patientReadiness: 'Patient readiness for therapy',
+  mobilityStatus: 'Post-session mobility & range of motion',
+  exercisesCompleted: 'Exercises & modalities completed',
+  patientCompliance: 'Patient compliance & home exercise adherence',
+};
+
 function loadQuestionLabels() {
-  if (!questionLabelsLoaded) {
-    questionLabelsLoaded = api('/api/feedback-questions')
+  if (!questionnaireLoaded) {
+    questionnaireLoaded = api('/api/feedback-questions')
       .then((data) => {
-        const q = data.questionnaire || {};
-        for (const item of [...(q.beforeAssessment || []), ...(q.afterSummary || [])]) {
-          questionLabels[item.id] = String(item.label || item.id).replace(/^\d+\.\s*/, '');
-          questionOrder.push(item.id);
+        questionnaire = data.questionnaire || { sections: [] };
+        questionLabels = { ...LEGACY_LABELS };
+        questionOrder = [];
+        for (const section of questionnaire.sections || []) {
+          for (const q of section.questions) {
+            questionLabels[q.id] = q.label;
+            questionOrder.push(q.id);
+          }
         }
       })
       .catch(() => {
-        questionLabelsLoaded = null;
+        questionnaireLoaded = null;
       });
   }
-  return questionLabelsLoaded;
+  return questionnaireLoaded;
+}
+
+function findQuestion(id) {
+  for (const section of questionnaire.sections || []) {
+    const q = section.questions.find((item) => item.id === id);
+    if (q) return q;
+  }
+  return null;
+}
+
+function formatExercise(ex) {
+  const dose = [ex.sets && `${ex.sets} set${ex.sets === '1' ? '' : 's'}`, ex.reps && `${ex.reps} reps`].filter(Boolean).join(' × ');
+  const extra = [dose, ex.frequency].filter(Boolean).join(', ');
+  return extra ? `${ex.name} (${extra})` : ex.name;
+}
+
+function formatAnswer(key, value) {
+  const q = findQuestion(key);
+  if (q && q.type === 'scale_0_10') return `${value} / 10`;
+  if (q && q.type === 'date') return new Date(`${value}T00:00:00`).toLocaleDateString([], { day: 'numeric', month: 'short', year: 'numeric' });
+  if (q && q.type === 'time') return new Date(`1970-01-01T${value}:00`).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+  if (q && q.type === 'exercise_list') return value.map(formatExercise).join('\n');
+  if (Array.isArray(value)) return value.join(', ');
+  return String(value);
 }
 
 const SYNC_LABELS = {
@@ -354,8 +385,13 @@ function answerRows(answers) {
   return Object.entries(answers || {})
     .sort(([a], [b]) => rank(a) - rank(b))
     .filter(([key, value]) => key !== 'clinicalNotes' && value !== '' && value !== null && value !== undefined)
-    .map(([key, value]) => `<div class="session-answer"><span>${escapeHtml(questionLabels[key] || key)}</span><strong>${escapeHtml(value)}</strong></div>`)
+    .map(([key, value]) => `<div class="session-answer"><span>${escapeHtml(questionLabels[key] || key)}</span><strong>${escapeHtml(formatAnswer(key, value))}</strong></div>`)
     .join('');
+}
+
+function sectionTitle(id, fallback) {
+  const section = (questionnaire.sections || []).find((sec) => sec.id === id);
+  return (section && section.title) || fallback;
 }
 
 function sessionDetailHtml(s, allotted) {
@@ -370,8 +406,8 @@ function sessionDetailHtml(s, allotted) {
         <span>${escapeHtml(s.physioUsername ? teamMemberName(s.physioUsername) : 'Physio')} · ${escapeHtml(when)}</span>
       </div>
       <div class="session-sync sync-${escapeHtml(sync)}">${escapeHtml(SYNC_LABELS[sync] || sync)}${s.cliniceaSyncError && sync !== 'synced' ? ` <small>(${escapeHtml(s.cliniceaSyncError)})</small>` : ''}</div>
-      ${before ? `<div class="session-group"><div class="session-group-title">Before the session</div>${before}</div>` : ''}
-      ${after ? `<div class="session-group"><div class="session-group-title">After the session</div>${after}</div>` : ''}
+      ${before ? `<div class="session-group"><div class="session-group-title">${escapeHtml(sectionTitle('beforeAssessment', 'Session details'))}</div>${before}</div>` : ''}
+      ${after ? `<div class="session-group"><div class="session-group-title">${escapeHtml(sectionTitle('afterSummary', 'Post-session assessment'))}</div>${after}</div>` : ''}
       ${s.clinicalNotes ? `<div class="session-group"><div class="session-group-title">Physio notes</div><p class="session-notes">${escapeHtml(s.clinicalNotes)}</p></div>` : ''}
     </div>
   `;
@@ -575,73 +611,224 @@ function attachCardEvents() {
 
       if (fbCaseId) fbCaseId.value = caseId;
       if (fbPatientId) fbPatientId.value = patientId;
-      document.getElementById('modal-subtitle').textContent = `Two-part session evaluation for ${name} (${patientId})`;
-
-      // Reset form values
-      if (fbPainBefore) fbPainBefore.value = 4;
-      if (fbPainAfter) fbPainAfter.value = 3;
-      if (fbExercises) fbExercises.value = '';
-      if (fbNotes) fbNotes.value = '';
-
-      updatePainBeforeBadge(4);
-      updatePainAfterBadge(3);
-
-      selectedVitals = 'Normal / Stable';
-      selectedReadiness = 'Ready for full routine';
-      selectedMobility = 'Moderate Improvement';
-      selectedCompliance = 'Excellent (Followed HEP daily)';
-      updateChipSelectors();
+      document.getElementById('modal-subtitle').textContent = `${name} (${patientId})`;
+      renderFeedbackForm();
 
       if (feedbackModal) feedbackModal.hidden = false;
     });
   });
 }
 
-function updatePainBeforeBadge(val) {
-  const num = parseInt(val, 10);
-  let category = 'Mild';
-  let className = 'pain-mild';
-  if (num >= 7) { category = 'Severe'; className = 'pain-severe'; }
-  else if (num >= 4) { category = 'Moderate'; className = 'pain-moderate'; }
-  if (fbPainBeforeVal) {
-    fbPainBeforeVal.textContent = `${num} / 10 (${category})`;
-    fbPainBeforeVal.className = `pain-badge ${className}`;
+// ---------- Session assessment form (built from the questionnaire) ----------
+
+function todayInputValue() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+function nowTimeInputValue() {
+  const d = new Date();
+  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+}
+
+function exerciseRowHtml(q, index) {
+  const freq = (q.frequencyOptions || []).map((o) => `<option value="${escapeHtml(o)}">${escapeHtml(o)}</option>`).join('');
+  return `
+    <div class="fq-exercise" data-exercise-row>
+      <div class="fq-exercise-head">
+        <strong>Exercise ${index + 1}</strong>
+        <button type="button" class="text-link fq-remove" data-remove-exercise>Remove</button>
+      </div>
+      <label class="fq-sub">Exercise name<input type="text" data-ex="name" maxlength="200" placeholder="e.g. Isometric neck" /></label>
+      <div class="fq-exercise-grid">
+        <label class="fq-sub">Sets<input type="text" data-ex="sets" inputmode="numeric" maxlength="20" /></label>
+        <label class="fq-sub">Reps<input type="text" data-ex="reps" maxlength="40" /></label>
+      </div>
+      <label class="fq-sub">Frequency
+        <select data-ex="frequency"><option value="">Select frequency</option>${freq}</select>
+      </label>
+    </div>`;
+}
+
+function questionHtml(q) {
+  const name = `fq-${q.id}`;
+  const req = q.required ? '<span class="fq-required" aria-hidden="true">*</span>' : '';
+  const title = `<div class="fq-label" id="${name}-label">${escapeHtml(q.label)} ${req}</div>`;
+  let body = '';
+  switch (q.type) {
+    case 'date':
+      body = `<input type="date" name="${name}" value="${todayInputValue()}" aria-labelledby="${name}-label" />`;
+      break;
+    case 'time':
+      body = `<input type="time" name="${name}" value="${nowTimeInputValue()}" aria-labelledby="${name}-label" />`;
+      break;
+    case 'number':
+      body = `<input type="number" name="${name}" inputmode="numeric" min="${q.min ?? ''}" max="${q.max ?? ''}" value="${q.default ?? ''}" aria-labelledby="${name}-label" />`;
+      break;
+    case 'scale_0_10':
+      body = `
+        <div class="fq-scale" role="radiogroup" aria-labelledby="${name}-label">
+          ${Array.from({ length: 11 }, (_, n) => `<label class="fq-scale-dot"><input type="radio" name="${name}" value="${n}" /><span>${n}</span></label>`).join('')}
+        </div>
+        <div class="fq-scale-ends"><span>No pain</span><span>Worst pain</span></div>`;
+      break;
+    case 'single_choice':
+      body = `<div class="fq-options" role="radiogroup" aria-labelledby="${name}-label">${q.options.map((o) => `
+        <label class="fq-option"><input type="radio" name="${name}" value="${escapeHtml(o)}" /><span>${escapeHtml(o)}</span></label>`).join('')}</div>`;
+      break;
+    case 'multi_choice':
+      body = `<div class="fq-options" role="group" aria-labelledby="${name}-label">${q.options.map((o) => `
+        <label class="fq-option"><input type="checkbox" name="${name}" value="${escapeHtml(o)}" /><span>${escapeHtml(o)}</span></label>`).join('')}
+        ${q.allowOther ? `
+          <label class="fq-option"><input type="checkbox" name="${name}" value="__other" data-other-toggle /><span>Other</span></label>
+          <input type="text" class="fq-other" data-other-for="${name}" maxlength="200" placeholder="Describe other" hidden />` : ''}
+      </div>`;
+      break;
+    case 'textarea':
+      body = `<textarea name="${name}" rows="3" maxlength="4000" aria-labelledby="${name}-label"></textarea>`;
+      break;
+    case 'exercise_list':
+      body = `<div class="fq-exercises" data-exercises-for="${name}">${exerciseRowHtml(q, 0)}</div>
+        <button type="button" class="fq-add" data-add-exercise="${q.id}">+ Add exercise</button>`;
+      break;
+    default:
+      body = `<input type="text" name="${name}" aria-labelledby="${name}-label" />`;
   }
+  return `<div class="fq" data-question="${escapeHtml(q.id)}">${title}${body}</div>`;
 }
 
-function updatePainAfterBadge(val) {
-  const num = parseInt(val, 10);
-  let category = 'Mild';
-  let className = 'pain-mild';
-  if (num >= 7) { category = 'Severe'; className = 'pain-severe'; }
-  else if (num >= 4) { category = 'Moderate'; className = 'pain-moderate'; }
-  if (fbPainAfterVal) {
-    fbPainAfterVal.textContent = `${num} / 10 (${category})`;
-    fbPainAfterVal.className = `pain-badge ${className}`;
-  }
+function renderFeedbackForm() {
+  if (!fbQuestions) return;
+  fbQuestions.innerHTML = (questionnaire.sections || []).map((section) => `
+    <section class="fq-section">
+      <div class="fb-section-title"><span>${escapeHtml(section.title)}</span></div>
+      ${section.description ? `<p class="fq-section-desc">${escapeHtml(section.description)}</p>` : ''}
+      ${section.questions.map(questionHtml).join('')}
+    </section>`).join('');
+  if (fbConfirm) fbConfirm.checked = false;
+  const confirmText = document.getElementById('fb-confirm-text');
+  if (confirmText) confirmText.textContent = questionnaire.confirmation || 'I confirm these details are correct.';
+  if (fbError) fbError.textContent = '';
+  const card = feedbackModal && feedbackModal.querySelector('.modal-card');
+  if (card) card.scrollTop = 0;
 }
 
-function updateChipSelectors() {
-  document.querySelectorAll('.q-chip[data-q="vitals"]').forEach((c) => c.classList.toggle('active', c.dataset.val === selectedVitals));
-  document.querySelectorAll('.q-chip[data-q="readiness"]').forEach((c) => c.classList.toggle('active', c.dataset.val === selectedReadiness));
-  document.querySelectorAll('.q-chip[data-q="mobility"]').forEach((c) => c.classList.toggle('active', c.dataset.val === selectedMobility));
-  document.querySelectorAll('.q-chip[data-q="compliance"]').forEach((c) => c.classList.toggle('active', c.dataset.val === selectedCompliance));
-}
-
-if (fbPainBefore) fbPainBefore.addEventListener('input', (e) => updatePainBeforeBadge(e.target.value));
-if (fbPainAfter) fbPainAfter.addEventListener('input', (e) => updatePainAfterBadge(e.target.value));
-
-document.querySelectorAll('.q-chip').forEach((chip) => {
-  chip.addEventListener('click', () => {
-    const q = chip.dataset.q;
-    const val = chip.dataset.val;
-    if (q === 'vitals') selectedVitals = val;
-    if (q === 'readiness') selectedReadiness = val;
-    if (q === 'mobility') selectedMobility = val;
-    if (q === 'compliance') selectedCompliance = val;
-    updateChipSelectors();
+function renumberExercises(container) {
+  container.querySelectorAll('[data-exercise-row] .fq-exercise-head strong').forEach((el, i) => {
+    el.textContent = `Exercise ${i + 1}`;
   });
-});
+}
+
+// One set of listeners on the form container handles every question, however many there are.
+if (fbQuestions) {
+  fbQuestions.addEventListener('change', (e) => {
+    const input = e.target;
+    if (input.matches('[data-other-toggle]')) {
+      const other = fbQuestions.querySelector(`[data-other-for="${input.name}"]`);
+      if (other) {
+        other.hidden = !input.checked;
+        if (input.checked) other.focus();
+      }
+    }
+    // "None" (exclusiveOption) and the other options can't both be ticked.
+    if (input.type === 'checkbox' && input.checked) {
+      const q = findQuestion(input.name.replace(/^fq-/, ''));
+      if (q && q.exclusiveOption) {
+        fbQuestions.querySelectorAll(`input[name="${input.name}"]`).forEach((box) => {
+          if (box === input) return;
+          if (input.value === q.exclusiveOption || box.value === q.exclusiveOption) box.checked = false;
+        });
+      }
+    }
+  });
+
+  fbQuestions.addEventListener('click', (e) => {
+    const add = e.target.closest('[data-add-exercise]');
+    if (add) {
+      const q = findQuestion(add.dataset.addExercise);
+      const container = fbQuestions.querySelector(`[data-exercises-for="fq-${q.id}"]`);
+      container.insertAdjacentHTML('beforeend', exerciseRowHtml(q, container.children.length));
+      container.lastElementChild.querySelector('input').focus();
+      return;
+    }
+    const remove = e.target.closest('[data-remove-exercise]');
+    if (remove) {
+      const container = remove.closest('.fq-exercises');
+      remove.closest('[data-exercise-row]').remove();
+      if (!container.children.length) {
+        const q = findQuestion(container.dataset.exercisesFor.replace(/^fq-/, ''));
+        container.insertAdjacentHTML('beforeend', exerciseRowHtml(q, 0));
+      }
+      renumberExercises(container);
+    }
+  });
+}
+
+function readAnswer(q) {
+  const name = `fq-${q.id}`;
+  switch (q.type) {
+    case 'scale_0_10': {
+      const picked = fbQuestions.querySelector(`input[name="${name}"]:checked`);
+      return picked ? Number(picked.value) : undefined;
+    }
+    case 'single_choice': {
+      const picked = fbQuestions.querySelector(`input[name="${name}"]:checked`);
+      return picked ? picked.value : undefined;
+    }
+    case 'multi_choice': {
+      const values = [];
+      fbQuestions.querySelectorAll(`input[name="${name}"]:checked`).forEach((box) => {
+        if (box.value === '__other') {
+          const text = fbQuestions.querySelector(`[data-other-for="${name}"]`).value.trim();
+          if (text) values.push(`Other: ${text}`);
+        } else {
+          values.push(box.value);
+        }
+      });
+      return values;
+    }
+    case 'exercise_list':
+      return [...fbQuestions.querySelectorAll(`[data-exercises-for="${name}"] [data-exercise-row]`)]
+        .map((row) => ({
+          name: row.querySelector('[data-ex="name"]').value.trim(),
+          sets: row.querySelector('[data-ex="sets"]').value.trim(),
+          reps: row.querySelector('[data-ex="reps"]').value.trim(),
+          frequency: row.querySelector('[data-ex="frequency"]').value,
+        }))
+        .filter((ex) => ex.name);
+    case 'number': {
+      const raw = fbQuestions.querySelector(`[name="${name}"]`).value;
+      return raw === '' ? undefined : Number(raw);
+    }
+    default: {
+      const el = fbQuestions.querySelector(`[name="${name}"]`);
+      return el ? el.value.trim() : undefined;
+    }
+  }
+}
+
+function isEmptyAnswer(v) {
+  return v === undefined || v === '' || (Array.isArray(v) && v.length === 0);
+}
+
+// Returns { payload } or { error, element } for the first unanswered required question.
+function collectFeedback() {
+  const payload = { confirmed: Boolean(fbConfirm && fbConfirm.checked) };
+  for (const section of questionnaire.sections || []) {
+    payload[section.id] = {};
+    for (const q of section.questions) {
+      const value = readAnswer(q);
+      if (q.required && isEmptyAnswer(value)) {
+        return { error: `Please answer "${q.label}"`, element: fbQuestions.querySelector(`[data-question="${q.id}"]`) };
+      }
+      if (!isEmptyAnswer(value)) payload[section.id][q.id] = value;
+    }
+  }
+  if (!payload.confirmed) {
+    return { error: 'Please tick the confirmation before saving.', element: fbConfirm && fbConfirm.closest('.fq-confirm') };
+  }
+  return { payload };
+}
 
 if (closeFeedbackModal) closeFeedbackModal.addEventListener('click', () => (feedbackModal.hidden = true));
 if (btnCancelFb) btnCancelFb.addEventListener('click', () => (feedbackModal.hidden = true));
@@ -653,35 +840,30 @@ if (feedbackForm) {
     const submitBtn = feedbackForm.querySelector('button[type="submit"]');
     submitBtn.disabled = true;
 
-    const beforeAssessment = {
-      painLevelBefore: parseInt(fbPainBefore ? fbPainBefore.value : 4, 10),
-      vitalsStatus: selectedVitals,
-      patientReadiness: selectedReadiness,
-    };
-
-    const afterSummary = {
-      painLevelAfter: parseInt(fbPainAfter ? fbPainAfter.value : 3, 10),
-      mobilityStatus: selectedMobility,
-      exercisesCompleted: fbExercises.value.trim(),
-      patientCompliance: selectedCompliance,
-      clinicalNotes: fbNotes.value.trim(),
-    };
+    const { payload, error, element } = collectFeedback();
+    if (error) {
+      if (fbError) fbError.textContent = error;
+      if (element) {
+        element.classList.add('fq-missing');
+        element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        setTimeout(() => element.classList.remove('fq-missing'), 2500);
+      }
+      submitBtn.disabled = false;
+      return;
+    }
+    if (fbError) fbError.textContent = '';
 
     try {
       await api(`/api/cases/${encodeURIComponent(caseId)}/feedback`, {
         method: 'POST',
-        body: JSON.stringify({
-          beforeAssessment,
-          afterSummary,
-          clinicalNotes: fbNotes.value.trim(),
-        }),
+        body: JSON.stringify(payload),
       });
 
       feedbackModal.hidden = true;
       await loadCases();
-      alert('Session evaluation submitted & synced to Clinicea!');
+      alert('Session assessment saved.');
     } catch (err) {
-      alert(`Submission error: ${err.message}`);
+      if (fbError) fbError.textContent = err.message;
     } finally {
       submitBtn.disabled = false;
     }
