@@ -15,6 +15,19 @@ CREATE TABLE IF NOT EXISTS partners (
 -- Adds the columns for anyone who already ran this schema before email/phone existed.
 ALTER TABLE partners ADD COLUMN IF NOT EXISTS email TEXT NOT NULL DEFAULT '';
 ALTER TABLE partners ADD COLUMN IF NOT EXISTS phone TEXT NOT NULL DEFAULT '';
+ALTER TABLE partners ADD COLUMN IF NOT EXISTS role TEXT NOT NULL DEFAULT 'external_physio';
+
+CREATE TABLE IF NOT EXISTS patient_plans (
+  patient_id TEXT PRIMARY KEY,
+  enrolled BOOLEAN NOT NULL DEFAULT true,
+  allotted_sessions INT NOT NULL DEFAULT 0,
+  completed_sessions INT NOT NULL DEFAULT 0,
+  assigned_physio TEXT,
+  notes TEXT NOT NULL DEFAULT '',
+  history JSONB NOT NULL DEFAULT '[]'::jsonb,
+  updated_by TEXT,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
 
 CREATE TABLE IF NOT EXISTS appointments (
   appointment_id TEXT PRIMARY KEY,
