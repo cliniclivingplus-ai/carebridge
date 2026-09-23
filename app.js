@@ -98,8 +98,13 @@ function isPhysioAppointment(appt) {
   if (PHYSIO_FILTER.includes('*') || PHYSIO_FILTER.includes('all') || PHYSIO_FILTER.includes('any')) {
     return true;
   }
-  const haystack = `${appt.AppointmentServiceName || ''} ${appt.AppointmentServiceCategory || ''} ${appt.AppointmentPractionerName || ''}`.toLowerCase().trim();
-  if (!haystack) return false;
+  const serviceName = (appt.AppointmentServiceName || '').trim();
+  const serviceCat = (appt.AppointmentServiceCategory || '').trim();
+  // If Clinicea did not specify a service category, include it by default so home visits aren't hidden
+  if (!serviceName && !serviceCat) {
+    return true;
+  }
+  const haystack = `${serviceName} ${serviceCat} ${appt.AppointmentPractionerName || ''}`.toLowerCase().trim();
   return PHYSIO_FILTER.some((term) => haystack.includes(term));
 }
 
@@ -116,8 +121,8 @@ function requireRole(allowedRoles) {
   };
 }
 
-function toView(a) {
-  const planInfo = a.PatientID ? plans.getPlan(a.PatientID) : null;
+async function toView(a) {
+  const planInfo = a.PatientID ? await plans.getPlan(a.PatientID) : null;
   return {
     id: a.AppointmentID,
     start: a.AppointmentStartDateTime,
@@ -170,7 +175,7 @@ app.post('/api/login', loginLimiter, async (req, res) => {
   const user = await partners.verifyLogin(username, password);
   if (!user) return res.status(401).json({ error: 'Invalid credentials' });
   req.session.user = user;
-  res.json({ ok: true, username: user.username, name: user.name });
+  res.json({ ok: true, username: user.username, name: user.name, role: user.role });
 });
 
 app.post('/api/register', loginLimiter, async (req, res) => {
@@ -184,7 +189,7 @@ app.post('/api/register', loginLimiter, async (req, res) => {
   try {
     const user = await partners.registerUser({ username, password, name });
     req.session.user = user;
-    res.json({ ok: true, username: user.username, name: user.name });
+    res.json({ ok: true, username: user.username, name: user.name, role: user.role });
   } catch (err) {
     res.status(400).json({ error: err.message });
   }
@@ -212,6 +217,63 @@ app.post('/api/logout', (req, res) => {
 
 app.get('/api/me', (req, res) => {
   res.json({ user: req.session.user || null, liveMode: clinicea.isLiveMode() });
+});
+
+// Update Profile Details (Name, Email, Phone)
+app.put('/api/me/profile', requireAuth, async (req, res) => {
+  const { name, email, phone } = req.body || {};
+  try {
+    const updated = await partners.updateProfile(req.session.user.username, { name, email, phone });
+    req.session.user.name = updated.name;
+    res.json({ ok: true, user: updated });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+// Change Password
+app.put('/api/me/password', requireAuth, async (req, res) => {
+  const { oldPassword, newPassword } = req.body || {};
+  try {
+    await partners.changePassword(req.session.user.username, oldPassword, newPassword);
+    res.json({ ok: true, message: 'Password updated successfully' });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+// Delete Current Account
+app.delete('/api/me', requireAuth, async (req, res) => {
+  const username = req.session.user.username;
+  try {
+    await partners.deleteAccount(username);
+    req.session.destroy(() => res.json({ ok: true, message: 'Account deleted successfully' }));
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+// Update Specific Team Account (Sales & Doctor only)
+app.put('/api/team/:username', requireAuth, requireRole(['sales', 'clp_doctor']), async (req, res) => {
+  const targetUsername = req.params.username;
+  const { name, email, phone, role, password } = req.body || {};
+  try {
+    const updated = await partners.updateTeamMember(targetUsername, { name, email, phone, role, password });
+    res.json({ ok: true, user: updated });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+// Delete Specific Team Account (Sales & Doctor only)
+app.delete('/api/team/:username', requireAuth, requireRole(['sales', 'clp_doctor']), async (req, res) => {
+  const targetUsername = req.params.username;
+  try {
+    await partners.deleteAccount(targetUsername);
+    res.json({ ok: true, message: `Account ${targetUsername} deleted successfully` });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
 });
 
 // ---------- Dashboard data (reads from the store, kept in sync by webhooks) ----------
@@ -246,9 +308,15 @@ async function refreshDateFromClinieaIfDue(date) {
 app.get('/api/appointments', requireAuth, async (req, res) => {
   await seedStoreIfEmpty();
   const date = req.query.date || todayInIndia();
+  const viewMode = req.query.view || 'enrolled'; // 'enrolled' (default) or 'all'
   await refreshDateFromClinieaIfDue(date);
   const dayAppointments = await store.getByDate(date);
-  const visible = dayAppointments.filter(isPhysioAppointment).map(toView);
+  let visible = await Promise.all(dayAppointments.filter(isPhysioAppointment).map(toView));
+
+  if (viewMode === 'enrolled') {
+    visible = visible.filter((a) => a.patientPlan && a.patientPlan.enrolled);
+  }
+
   res.json({ date, liveMode: clinicea.isLiveMode(), appointments: visible });
 });
 
@@ -288,7 +356,7 @@ async function scanForNewBookings() {
     const isNewPhysioBooking = isPhysioAppointment(change) && !saved.notifiedNewBooking;
     if (isNewPhysioBooking) {
       const team = await partners.listTeam();
-      await notifications.notifyTeamOfNewBooking(team, toView(saved));
+      await notifications.notifyTeamOfNewBooking(team, await toView(saved));
       await store.markNotified(change.AppointmentID);
       notifiedCount += 1;
       console.log(`[scan] notified team of new booking ${change.AppointmentID} (${change.PatientName || 'unknown patient'})`);
@@ -350,7 +418,9 @@ app.get('/api/patients/lookup', requireAuth, patientLookupLimiter, async (req, r
     const patient = await clinicea.getPatientByUniqueId(id);
     console.log(`[patient-lookup] user=${req.session.user.username} id=${id} found=${Boolean(patient)}`);
     if (!patient) return res.status(404).json({ error: 'No patient found for that ID' });
-    res.json({ patient: toPatientLookupView(patient) });
+    const view = toPatientLookupView(patient);
+    const planInfo = await plans.getPlan(id || patient.PatientID);
+    res.json({ patient: view, patientPlan: planInfo });
   } catch (err) {
     console.error('[patient-lookup] error', err);
     res.status(502).json({ error: `Lookup failed: ${err.message}` });
@@ -391,7 +461,7 @@ app.put('/api/appointments/:id/notes', requireAuth, async (req, res) => {
     res.json({ ok: true, notesSyncStatus: 'synced' });
   } catch (err) {
     await store.setNotes(req.params.id, notes, 'failed');
-    res.status(502).json({ error: `Saved locally, but Clinicea sync failed: ${err.message}`, notesSyncStatus: 'failed' });
+    res.json({ ok: true, notesSyncStatus: 'failed', warning: `Saved in CareBridge. Clinicea API sync failed: ${err.message}` });
   }
 });
 
@@ -403,9 +473,9 @@ app.get('/api/patients/plan/:patientId', requireAuth, async (req, res) => {
 
 // POST /api/patients/plan/:patientId (Restricted to Sales & CLP Doctor!)
 app.post('/api/patients/plan/:patientId', requireAuth, requireRole(['sales', 'clp_doctor']), async (req, res) => {
-  const { allottedSessions } = req.body || {};
+  const { allottedSessions, assignedPhysio, notes } = req.body || {};
   try {
-    const updatedPlan = await plans.updateAllotted(req.params.patientId, allottedSessions, req.session.user.username);
+    const updatedPlan = await plans.updateAllotted(req.params.patientId, allottedSessions, assignedPhysio, notes, req.session.user.username);
     res.json({ ok: true, plan: updatedPlan });
   } catch (err) {
     res.status(400).json({ error: err.message });
@@ -440,7 +510,7 @@ app.post('/api/appointments/:id/feedback', requireAuth, async (req, res) => {
     res.json({ ok: true, notesSyncStatus: 'synced', plan: updatedPlan, note: formattedNote });
   } catch (err) {
     await store.setNotes(req.params.id, formattedNote, 'failed');
-    res.status(502).json({ error: `Saved locally, but Clinicea sync failed: ${err.message}`, notesSyncStatus: 'failed', plan: updatedPlan, note: formattedNote });
+    res.json({ ok: true, notesSyncStatus: 'failed', warning: `Saved in CareBridge. Clinicea API sync failed: ${err.message}`, plan: updatedPlan, note: formattedNote });
   }
 });
 
@@ -474,7 +544,8 @@ function handleAppointmentWebhook(eventType) {
       // double notification if the cron also picks it up on the same appointment.
       if (eventType === 'add' && isPhysioAppointment(appt) && !saved.notifiedNewBooking) {
         const team = await partners.listTeam();
-        notifications.notifyTeamOfNewBooking(team, toView(saved)).catch((err) =>
+        const viewObj = await toView(saved);
+        notifications.notifyTeamOfNewBooking(team, viewObj).catch((err) =>
           console.error('[webhook] notify failed:', err.message)
         );
         await store.markNotified(appt.AppointmentID);
@@ -526,7 +597,7 @@ if (DEMO_MODE) {
       notes: '',
     };
     const saved = await store.upsertAppointment(appt);
-    res.json({ ok: true, appointment: toView(saved) });
+    res.json({ ok: true, appointment: await toView(saved) });
   });
 }
 

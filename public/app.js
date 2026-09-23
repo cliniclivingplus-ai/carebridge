@@ -129,6 +129,11 @@ function showApp(userObj, liveMode) {
     userRoleBadge.className = `role-badge role-${currentUserRole}`;
   }
 
+  const teamSettingsBtn = document.getElementById('team-settings-btn');
+  if (teamSettingsBtn) {
+    teamSettingsBtn.hidden = !(currentUserRole === 'sales' || currentUserRole === 'clp_doctor');
+  }
+
   modeText.textContent = liveMode ? 'LIVE CLINICEA' : 'MOCK DEMO';
   modeBadge.className = `mode-badge ${liveMode ? 'live' : 'mock'}`;
   if (demoTools) demoTools.hidden = liveMode;
@@ -148,8 +153,8 @@ function sourceLabel(source) {
 
 function syncLabel(status) {
   if (status === 'pending') return 'Syncing...';
-  if (status === 'failed') return 'Sync Failed';
-  return 'Synced';
+  if (status === 'failed') return 'Saved in CareBridge';
+  return 'Synced to Clinicea ✓';
 }
 
 function teamMemberName(username) {
@@ -159,7 +164,9 @@ function teamMemberName(username) {
 
 function assignOptionsHtml(currentAssignee) {
   const options = ['<option value="">Unassigned</option>'];
-  for (const member of team) {
+  // Only list external physiotherapists (Jane, Raj, Meera) in the Assigned Physio dropdown
+  const physios = team.filter((m) => m.role === 'external_physio' || !m.role);
+  for (const member of physios) {
     const label = member.username === currentUser ? `${member.name} (me)` : member.name;
     const selected = member.username === currentAssignee ? 'selected' : '';
     options.push(`<option value="${member.username}" ${selected}>${label}</option>`);
@@ -204,6 +211,8 @@ function renderAppointmentsList(appointments) {
   emptyState.hidden = appointments.length > 0;
 
   const canEditAllotment = currentUserRole === 'sales' || currentUserRole === 'clp_doctor';
+  const isPhysio = currentUserRole === 'external_physio';
+  const canRecordFeedback = currentUserRole === 'external_physio' || currentUserRole === 'clp_doctor';
 
   for (const appt of appointments) {
     const card = document.createElement('div');
@@ -275,27 +284,63 @@ function renderAppointmentsList(appointments) {
           <span class="assign-label">Assigned Physio</span>
           <span class="assigned-tag" data-assign-tag-for="${appt.id}">${isMine ? 'Assigned to You' : assignedName}</span>
         </div>
-        <div class="assign-controls">
-          <select class="assign-select" data-assign-for="${appt.id}">
-            ${assignOptionsHtml(appt.assignedTo)}
-          </select>
-          <button class="btn-assign-self" data-assign-me-for="${appt.id}">Claim Visit</button>
-        </div>
+        ${isPhysio ? `
+          <div class="assign-controls">
+            <select class="assign-select" data-assign-for="${appt.id}">
+              ${assignOptionsHtml(appt.assignedTo)}
+            </select>
+            <button class="btn-assign-self" data-assign-me-for="${appt.id}">Claim Visit</button>
+          </div>
+        ` : ''}
       </div>
 
       <!-- Feedback Questionnaire Action Button -->
-      <div class="feedback-action-strip">
-        <button class="btn-open-feedback" data-appt-id="${appt.id}" data-patient-id="${appt.patientId || ''}" data-name="${appt.patientName || 'Patient'}">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-          <span>Record Visit Feedback &amp; Questionnaire</span>
-        </button>
-      </div>
+      ${canRecordFeedback ? `
+        <div class="feedback-action-strip">
+          <button class="btn-open-feedback" data-appt-id="${appt.id}" data-patient-id="${appt.patientId || ''}" data-name="${appt.patientName || 'Patient'}">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+            <span>Record Visit Feedback &amp; Questionnaire</span>
+          </button>
+        </div>
+      ` : ''}
 
+      <!-- Clinicea Notes & Session History Box -->
       <div class="notes-box">
         <div class="notes-label-bar">
-          <label>Clinicea Notes / History</label>
+          <label>Clinicea Notes &amp; Session History</label>
           <span class="sync-status-badge ${appt.notesSyncStatus}" data-sync-for="${appt.id}">${syncLabel(appt.notesSyncStatus)}</span>
         </div>
+        ${(() => {
+          const history = (appt.patientPlan && appt.patientPlan.history && Array.isArray(appt.patientPlan.history))
+            ? appt.patientPlan.history
+            : [];
+          if (history.length === 0) return '';
+          return `
+            <div class="history-timeline">
+              <div class="history-title-bar">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 8v4l3 3"/><circle cx="12" cy="12" r="9"/></svg>
+                <span>Past Visit Feedback History (${history.length} Session${history.length > 1 ? 's' : ''})</span>
+              </div>
+              <div class="history-list">
+                ${history.slice().reverse().map((h) => `
+                  <div class="history-item">
+                    <div class="history-item-header">
+                      <span class="session-tag">Session ${h.sessionNumber || '1'} of ${h.totalAllotted || allotted || '5'}</span>
+                      <span class="history-author">Logged by ${teamMemberName(h.loggedBy)} ${h.timestamp ? '• ' + new Date(h.timestamp).toLocaleDateString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : ''}</span>
+                    </div>
+                    <div class="history-metrics">
+                      <span class="metric-pill pain-pill">Pain: ${h.painLevel || 'N/A'}/10</span>
+                      <span class="metric-pill">Mobility: ${h.mobilityStatus || 'N/A'}</span>
+                      <span class="metric-pill">Compliance: ${h.patientCompliance || 'N/A'}</span>
+                    </div>
+                    ${h.exercisesCompleted ? `<div class="history-detail"><strong>Exercises:</strong> ${h.exercisesCompleted}</div>` : ''}
+                    ${h.clinicalNotes ? `<div class="history-notes">"${h.clinicalNotes}"</div>` : ''}
+                  </div>
+                `).join('')}
+              </div>
+            </div>
+          `;
+        })()}
         <textarea data-id="${appt.id}" placeholder="Record visit observations, ROM, exercises, or progress...">${appt.notes || ''}</textarea>
         <div class="notes-actions">
           <div class="quick-templates">
@@ -526,18 +571,26 @@ if (allotForm) {
     e.preventDefault();
     const patientId = allotPatientId.value;
     const count = parseInt(allotCount.value, 10);
+    const notesEl = document.getElementById('allot-notes');
+    const notes = notesEl ? notesEl.value : '';
+
     const submitBtn = allotForm.querySelector('button[type="submit"]');
     submitBtn.disabled = true;
 
     try {
       await api(`/api/patients/plan/${encodeURIComponent(patientId)}`, {
         method: 'POST',
-        body: JSON.stringify({ allottedSessions: count }),
+        body: JSON.stringify({ allottedSessions: count, notes }),
       });
 
       allotModal.hidden = true;
       await loadAppointments();
-      alert('Patient session plan updated successfully!');
+      alert('Patient enrolled successfully as an Open Task for PhysioWay!');
+
+      // If lookup input has this patient, re-trigger lookup to refresh lookup card
+      if (lookupInput && lookupInput.value.trim().toUpperCase() === patientId.toUpperCase()) {
+        lookupForm.dispatchEvent(new Event('submit'));
+      }
     } catch (err) {
       alert(`Allotment update failed: ${err.message}`);
     } finally {
@@ -560,6 +613,12 @@ document.querySelectorAll('.btn-demo-login').forEach((btn) => {
 async function loadTeam() {
   const data = await api('/api/team');
   team = data.team;
+  const allotPhysioSelect = document.getElementById('allot-physio');
+  if (allotPhysioSelect) {
+    const physios = team.filter((m) => m.role === 'external_physio' || !m.role);
+    allotPhysioSelect.innerHTML = '<option value="">Unassigned</option>' +
+      physios.map((m) => `<option value="${m.username}">${m.name}</option>`).join('');
+  }
 }
 
 async function loadAppointments() {
@@ -709,15 +768,52 @@ if (lookupForm) {
     try {
       const data = await api(`/api/patients/lookup?id=${encodeURIComponent(id)}`);
       const p = data.patient;
+      const plan = data.patientPlan || { enrolled: false, allottedSessions: 0, completedSessions: 0 };
+      const isEnrolled = plan.enrolled && plan.allottedSessions > 0;
+      const canEditAllotment = currentUserRole === 'sales' || currentUserRole === 'clp_doctor';
+
       lookupResult.innerHTML = `
-        <div class="lookup-result-name">${p.name || 'Unknown name'}</div>
-        <div class="lookup-result-row"><strong>Mobile:</strong> ${p.mobile || '—'}</div>
-        <div class="lookup-result-row"><strong>Address:</strong> ${p.address || '—'}</div>
-        <div class="lookup-result-row"><strong>Blood group:</strong> ${p.bloodGroup || '—'}</div>
-        <div class="lookup-result-row"><strong>Allergies:</strong> ${p.allergies || '—'}</div>
-        <div class="lookup-result-row"><strong>Notes:</strong> ${p.notes || '—'}</div>
+        <div class="lookup-card">
+          <div class="lookup-result-name">${p.name || 'Unknown name'} <span class="patient-id-tag">(${p.id || id})</span></div>
+          <div class="lookup-result-row"><strong>Mobile:</strong> ${p.mobile || '—'}</div>
+          <div class="lookup-result-row"><strong>Address:</strong> ${p.address || '—'}</div>
+          <div class="lookup-result-row"><strong>Blood group:</strong> ${p.bloodGroup || '—'}</div>
+          <div class="lookup-result-row"><strong>Allergies:</strong> ${p.allergies || '—'}</div>
+          <div class="lookup-result-row"><strong>Clinicea Notes:</strong> ${p.notes || '—'}</div>
+
+          <div class="lookup-enrolment-strip">
+            <div class="enrolment-status ${isEnrolled ? 'status-enrolled' : 'status-not-enrolled'}">
+              <span class="enrolment-title">${isEnrolled ? 'Active Home Visit Program' : 'Not Enrolled in Physio Home Visits'}</span>
+              <span class="enrolment-details">${isEnrolled ? `Completed <strong>${plan.completedSessions}</strong> of <strong>${plan.allottedSessions}</strong> Sessions` : 'Patient needs session plan allotment'}</span>
+            </div>
+            ${canEditAllotment ? `
+              <button type="button" class="btn-lookup-enroll pill-btn" data-patient-id="${p.id || id}" data-name="${p.name || id}" data-allotted="${plan.allottedSessions || 5}" data-physio="${plan.assignedPhysio || ''}" data-notes="${plan.notes || ''}">
+                <span>${isEnrolled ? 'Edit Session Plan & Allotment' : '+ Enroll Patient & Allot Sessions'}</span>
+              </button>
+            ` : ''}
+          </div>
+        </div>
       `;
       lookupResult.hidden = false;
+
+      // Attach event listener to the Enroll button in lookup result
+      const enrollBtn = lookupResult.querySelector('.btn-lookup-enroll');
+      if (enrollBtn) {
+        enrollBtn.addEventListener('click', () => {
+          const patientId = enrollBtn.dataset.patientId;
+          const currentAllotted = enrollBtn.dataset.allotted || 5;
+          const currentNotes = enrollBtn.dataset.notes || '';
+          const name = enrollBtn.dataset.name;
+
+          allotPatientId.value = patientId;
+          allotCount.value = currentAllotted > 0 ? currentAllotted : 5;
+          const notesEl = document.getElementById('allot-notes');
+          if (notesEl) notesEl.value = currentNotes;
+
+          document.getElementById('allot-modal-subtitle').textContent = `Set total session count for ${name} (${patientId}) (Open Task for PhysioWay)`;
+          allotModal.hidden = false;
+        });
+      }
     } catch (err) {
       lookupError.textContent = err.message;
     } finally {
@@ -792,6 +888,242 @@ logoutBtn.addEventListener('click', async () => {
   await api('/api/logout', { method: 'POST' });
   showLogin();
 });
+
+// Profile & Account Settings Modal Listeners
+const profileModal = document.getElementById('profile-modal');
+const closeProfileModal = document.getElementById('close-profile-modal');
+const profileSettingsBtn = document.getElementById('profile-settings-btn');
+const profileEditForm = document.getElementById('profile-edit-form');
+const profName = document.getElementById('prof-name');
+const profEmail = document.getElementById('prof-email');
+const profPhone = document.getElementById('prof-phone');
+const profilePasswordForm = document.getElementById('profile-password-form');
+const profOldPass = document.getElementById('prof-old-pass');
+const profNewPass = document.getElementById('prof-new-pass');
+const btnDeleteAccount = document.getElementById('btn-delete-account');
+
+if (profileSettingsBtn) {
+  profileSettingsBtn.addEventListener('click', () => {
+    if (profName) profName.value = currentUserName || '';
+    if (profileModal) profileModal.hidden = false;
+  });
+}
+
+if (closeProfileModal) {
+  closeProfileModal.addEventListener('click', () => {
+    if (profileModal) profileModal.hidden = true;
+  });
+}
+
+if (profileEditForm) {
+  profileEditForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const name = profName.value.trim();
+    const email = profEmail.value.trim();
+    const phone = profPhone.value.trim();
+    try {
+      const result = await api('/api/me/profile', {
+        method: 'PUT',
+        body: JSON.stringify({ name, email, phone }),
+      });
+      currentUserName = result.user.name;
+      if (whoEl) whoEl.textContent = currentUserName;
+      if (avatarInitials) avatarInitials.textContent = (currentUserName || 'U').charAt(0).toUpperCase();
+      if (profileModal) profileModal.hidden = true;
+      alert('Profile details updated successfully!');
+    } catch (err) {
+      alert(`Failed to update profile: ${err.message}`);
+    }
+  });
+}
+
+if (profilePasswordForm) {
+  profilePasswordForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const oldPassword = profOldPass.value;
+    const newPassword = profNewPass.value;
+    try {
+      await api('/api/me/password', {
+        method: 'PUT',
+        body: JSON.stringify({ oldPassword, newPassword }),
+      });
+      profOldPass.value = '';
+      profNewPass.value = '';
+      if (profileModal) profileModal.hidden = true;
+      alert('Password changed successfully!');
+    } catch (err) {
+      alert(`Password change failed: ${err.message}`);
+    }
+  });
+}
+
+if (btnDeleteAccount) {
+  btnDeleteAccount.addEventListener('click', async () => {
+    const confirmDelete = confirm(`Are you sure you want to PERMANENTLY delete your account (${currentUser})? This action cannot be undone.`);
+    if (!confirmDelete) return;
+
+    try {
+      await api('/api/me', { method: 'DELETE' });
+      if (profileModal) profileModal.hidden = true;
+      alert('Your account has been deleted.');
+      showLogin();
+    } catch (err) {
+      alert(`Account deletion failed: ${err.message}`);
+    }
+  });
+}
+
+// ---------- Team Accounts Management Modal (Sales & CLP Doctor Only) ----------
+const teamModal = document.getElementById('team-modal');
+const closeTeamModal = document.getElementById('close-team-modal');
+const teamSettingsBtn = document.getElementById('team-settings-btn');
+const teamSearchInput = document.getElementById('team-search-input');
+const teamMembersList = document.getElementById('team-members-list');
+const btnAddTeamMember = document.getElementById('btn-add-team-member');
+
+const teamEditModal = document.getElementById('team-edit-modal');
+const closeTeamEditModal = document.getElementById('close-team-edit-modal');
+const btnCancelTeamEdit = document.getElementById('btn-cancel-team-edit');
+const teamEditForm = document.getElementById('team-edit-form');
+const editTeamUsername = document.getElementById('edit-team-username');
+const editTeamName = document.getElementById('edit-team-name');
+const editTeamRole = document.getElementById('edit-team-role');
+const editTeamEmail = document.getElementById('edit-team-email');
+const editTeamPhone = document.getElementById('edit-team-phone');
+const editTeamPassword = document.getElementById('edit-team-password');
+
+function renderTeamList() {
+  if (!teamMembersList) return;
+  const query = (teamSearchInput ? teamSearchInput.value : '').toLowerCase().trim();
+  let filtered = team;
+  if (query) {
+    filtered = team.filter((m) =>
+      (m.name || '').toLowerCase().includes(query) ||
+      (m.username || '').toLowerCase().includes(query) ||
+      (m.email || '').toLowerCase().includes(query) ||
+      (m.role || '').toLowerCase().includes(query)
+    );
+  }
+
+  if (filtered.length === 0) {
+    teamMembersList.innerHTML = `<div class="empty-card" style="padding:20px"><p>No team accounts matching search.</p></div>`;
+    return;
+  }
+
+  teamMembersList.innerHTML = filtered.map((member) => `
+    <div class="team-member-card">
+      <div class="team-member-info">
+        <div class="team-member-name-row">
+          <span class="team-member-name">${member.name}</span>
+          <span class="team-member-username">@${member.username}</span>
+          <span class="role-badge role-${member.role || 'external_physio'}">${roleLabel(member.role)}</span>
+        </div>
+        <div class="team-member-contact">
+          <span>📧 ${member.email || 'No email set'}</span>
+          <span>📞 ${member.phone || 'No phone set'}</span>
+        </div>
+      </div>
+      <div class="team-card-actions">
+        <button type="button" class="btn-icon-action btn-edit-team-member" data-username="${member.username}">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+          <span>Edit Profile</span>
+        </button>
+        <button type="button" class="btn-icon-action danger btn-delete-team-member" data-username="${member.username}">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
+          <span>Delete</span>
+        </button>
+      </div>
+    </div>
+  `).join('');
+
+  teamMembersList.querySelectorAll('.btn-edit-team-member').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const uname = btn.dataset.username;
+      const member = team.find((t) => t.username === uname);
+      if (!member) return;
+      editTeamUsername.value = member.username;
+      editTeamName.value = member.name || '';
+      editTeamRole.value = member.role || 'external_physio';
+      editTeamEmail.value = member.email || '';
+      editTeamPhone.value = member.phone || '';
+      editTeamPassword.value = '';
+      document.getElementById('team-edit-subtitle').textContent = `Modify details for @${member.username}`;
+      if (teamEditModal) teamEditModal.hidden = false;
+    });
+  });
+
+  teamMembersList.querySelectorAll('.btn-delete-team-member').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const uname = btn.dataset.username;
+      if (uname === currentUser) {
+        alert("You cannot delete your active account from team manager. Use 'My Profile' settings.");
+        return;
+      }
+      const confirmDel = confirm(`Are you sure you want to PERMANENTLY delete team account @${uname}?`);
+      if (!confirmDel) return;
+      try {
+        await api(`/api/team/${encodeURIComponent(uname)}`, { method: 'DELETE' });
+        alert(`Account @${uname} has been deleted.`);
+        await loadTeam();
+        renderTeamList();
+      } catch (err) {
+        alert(`Delete error: ${err.message}`);
+      }
+    });
+  });
+}
+
+if (teamSettingsBtn) {
+  teamSettingsBtn.addEventListener('click', async () => {
+    await loadTeam();
+    renderTeamList();
+    if (teamModal) teamModal.hidden = false;
+  });
+}
+
+if (closeTeamModal) closeTeamModal.addEventListener('click', () => (teamModal.hidden = true));
+if (teamSearchInput) teamSearchInput.addEventListener('input', () => renderTeamList());
+
+if (btnAddTeamMember) {
+  btnAddTeamMember.addEventListener('click', () => {
+    if (teamModal) teamModal.hidden = true;
+    showAuthTab('register');
+    if (loginScreen) loginScreen.hidden = false;
+    if (appScreen) appScreen.hidden = true;
+  });
+}
+
+if (closeTeamEditModal) closeTeamEditModal.addEventListener('click', () => (teamEditModal.hidden = true));
+if (btnCancelTeamEdit) btnCancelTeamEdit.addEventListener('click', () => (teamEditModal.hidden = true));
+
+if (teamEditForm) {
+  teamEditForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const uname = editTeamUsername.value;
+    const name = editTeamName.value.trim();
+    const role = editTeamRole.value;
+    const email = editTeamEmail.value.trim();
+    const phone = editTeamPhone.value.trim();
+    const password = editTeamPassword.value;
+
+    const submitBtn = teamEditForm.querySelector('button[type="submit"]');
+    submitBtn.disabled = true;
+    try {
+      await api(`/api/team/${encodeURIComponent(uname)}`, {
+        method: 'PUT',
+        body: JSON.stringify({ name, role, email, phone, password: password || undefined }),
+      });
+      if (teamEditModal) teamEditModal.hidden = true;
+      alert(`Account @${uname} updated successfully!`);
+      await loadTeam();
+      renderTeamList();
+    } catch (err) {
+      alert(`Update failed: ${err.message}`);
+    } finally {
+      submitBtn.disabled = false;
+    }
+  });
+}
 
 (async function init() {
   datePicker.value = todayStr();

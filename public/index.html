@@ -169,6 +169,12 @@
               <span id="who" class="user-name">Jane</span>
               <span id="user-role-badge" class="role-badge">Physio</span>
             </div>
+            <button id="team-settings-btn" class="icon-btn" title="Manage Team Accounts (Sales & Doctor)" hidden>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+            </button>
+            <button id="profile-settings-btn" class="icon-btn" title="Account Settings & Edit Profile">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.38a2 2 0 0 0-.73-2.73l-.15-.09a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
+            </button>
             <button id="logout-btn" class="icon-btn" title="Log out">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
             </button>
@@ -359,8 +365,8 @@
     <div class="modal-card glass-card">
       <div class="modal-header">
         <div>
-          <h3>Allot Sessions Plan</h3>
-          <p id="allot-modal-subtitle">Sales &amp; CLP Doctor Session Management</p>
+          <h3>Allot Sessions Plan (Open Task)</h3>
+          <p id="allot-modal-subtitle">Sales &amp; CLP Doctor Session Allotment</p>
         </div>
         <button id="close-allot-modal" class="close-btn" type="button">&times;</button>
       </div>
@@ -372,11 +378,151 @@
           <input type="number" id="allot-count" min="1" max="50" value="5" required />
         </div>
 
+        <div class="input-group">
+          <label for="allot-notes">Home Visit Instructions / Plan Notes</label>
+          <textarea id="allot-notes" rows="2" placeholder="Special care instructions or notes for the physio..."></textarea>
+        </div>
+
         <div class="modal-footer">
           <button type="button" id="btn-cancel-allot" class="btn-secondary">Cancel</button>
           <button type="submit" class="btn-primary">
-            <span>Save Allotment Plan</span>
+            <span>Save &amp; Enroll Patient</span>
           </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Profile & Account Settings Modal -->
+  <div id="profile-modal" class="modal-backdrop" hidden>
+    <div class="modal-card glass-card">
+      <div class="modal-header">
+        <div>
+          <h3>My Profile &amp; Account Settings</h3>
+          <p id="profile-modal-subtitle">Manage account details, password &amp; account deletion</p>
+        </div>
+        <button id="close-profile-modal" class="close-btn" type="button">&times;</button>
+      </div>
+
+      <div class="profile-modal-body">
+        <!-- Edit Personal Profile Info -->
+        <form id="profile-edit-form" class="auth-form">
+          <h4 class="section-title">Edit Profile Details</h4>
+          <div class="input-group">
+            <label for="prof-name">Full Name</label>
+            <input type="text" id="prof-name" placeholder="Full Name" required />
+          </div>
+          <div class="input-group">
+            <label for="prof-email">Email Address</label>
+            <input type="email" id="prof-email" placeholder="email@example.com" />
+          </div>
+          <div class="input-group">
+            <label for="prof-phone">Phone Number</label>
+            <input type="text" id="prof-phone" placeholder="+91..." />
+          </div>
+          <button type="submit" class="btn-primary">Save Profile Details</button>
+        </form>
+
+        <hr class="modal-divider" />
+
+        <!-- Change Password Form -->
+        <form id="profile-password-form" class="auth-form">
+          <h4 class="section-title">Change Password</h4>
+          <div class="input-group">
+            <label for="prof-old-pass">Current Password</label>
+            <input type="password" id="prof-old-pass" placeholder="••••••••" required />
+          </div>
+          <div class="input-group">
+            <label for="prof-new-pass">New Password</label>
+            <input type="password" id="prof-new-pass" placeholder="New Password (min 4 chars)" required />
+          </div>
+          <button type="submit" class="btn-secondary">Update Password</button>
+        </form>
+
+        <hr class="modal-divider" />
+
+        <!-- Account Deletion Zone -->
+        <div class="danger-zone-box">
+          <h4 class="section-title text-danger">Delete Account</h4>
+          <p>Permanently remove your partner account from CareBridge.</p>
+          <button type="button" id="btn-delete-account" class="btn-danger">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
+            <span>Delete My Account</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Team Accounts Manager Modal (Sales & CLP Doctor Only) -->
+  <div id="team-modal" class="modal-backdrop" hidden>
+    <div class="modal-card glass-card modal-large">
+      <div class="modal-header">
+        <div>
+          <h3>Manage Team Accounts</h3>
+          <p>Sales Team &amp; CLP Doctor: View, edit profile details, change roles/passwords, or delete accounts</p>
+        </div>
+        <button id="close-team-modal" class="close-btn" type="button">&times;</button>
+      </div>
+
+      <div class="team-modal-toolbar">
+        <div class="search-box inline-search">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          <input type="text" id="team-search-input" placeholder="Search team member..." />
+        </div>
+        <button id="btn-add-team-member" class="pill-btn">+ Add Team Member</button>
+      </div>
+
+      <div id="team-members-list" class="team-members-grid"></div>
+    </div>
+  </div>
+
+  <!-- Edit Team Member Modal (Sales & CLP Doctor) -->
+  <div id="team-edit-modal" class="modal-backdrop" hidden>
+    <div class="modal-card glass-card">
+      <div class="modal-header">
+        <div>
+          <h3>Edit Team Account</h3>
+          <p id="team-edit-subtitle">Modify profile details, role, or password</p>
+        </div>
+        <button id="close-team-edit-modal" class="close-btn" type="button">&times;</button>
+      </div>
+
+      <form id="team-edit-form" class="auth-form">
+        <input type="hidden" id="edit-team-username" />
+        
+        <div class="input-group">
+          <label for="edit-team-name">Full Name</label>
+          <input type="text" id="edit-team-name" placeholder="Full Name" required />
+        </div>
+
+        <div class="input-group">
+          <label for="edit-team-role">Account Department / Role</label>
+          <select id="edit-team-role" class="styled-select" required>
+            <option value="sales">Sales Team</option>
+            <option value="clp_doctor">CLP Doctor (Dr. Ritika)</option>
+            <option value="external_physio">PhysioWay Physio</option>
+          </select>
+        </div>
+
+        <div class="input-group">
+          <label for="edit-team-email">Email Address</label>
+          <input type="email" id="edit-team-email" placeholder="email@example.com" />
+        </div>
+
+        <div class="input-group">
+          <label for="edit-team-phone">Phone Number</label>
+          <input type="text" id="edit-team-phone" placeholder="+91..." />
+        </div>
+
+        <div class="input-group">
+          <label for="edit-team-password">Reset Password (Optional)</label>
+          <input type="password" id="edit-team-password" placeholder="Leave blank to keep current password" />
+        </div>
+
+        <div class="modal-footer">
+          <button type="button" id="btn-cancel-team-edit" class="btn-secondary">Cancel</button>
+          <button type="submit" class="btn-primary">Save Changes</button>
         </div>
       </form>
     </div>
