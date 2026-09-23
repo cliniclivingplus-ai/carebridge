@@ -115,6 +115,9 @@ async function api(path, options = {}) {
     ...options,
   });
   const data = await res.json().catch(() => ({}));
+  if (res.status === 401 && path !== '/api/login' && path !== '/api/me') {
+    showLogin();
+  }
   if (!res.ok) throw new Error(data.error || `Request failed (${res.status})`);
   return data;
 }
