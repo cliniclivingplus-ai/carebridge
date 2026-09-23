@@ -40,15 +40,16 @@ const sessionConfig = {
     httpOnly: true,
     sameSite: 'lax',
     maxAge: 8 * 60 * 60 * 1000,
-    secure: process.env.NODE_ENV === 'production',
   },
 };
 
 if (db.isConfigured()) {
-  // Sessions live in Postgres, not process memory -- required on Vercel since each request
-  // can hit a different (or newly cold-started) function instance with no shared memory.
-  const pgSession = require('connect-pg-simple')(session);
-  sessionConfig.store = new pgSession({ pool: db.getPool(), tableName: 'session', createTableIfMissing: true });
+  try {
+    const pgSession = require('connect-pg-simple')(session);
+    sessionConfig.store = new pgSession({ pool: db.getPool(), tableName: 'session', createTableIfMissing: true });
+  } catch (err) {
+    console.error('[session] Postgres session store setup failed, using memory store:', err.message);
+  }
 }
 
 app.use(session(sessionConfig));
