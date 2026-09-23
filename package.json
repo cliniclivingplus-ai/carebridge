@@ -1,8 +1,8 @@
 {
-  "name": "clinicea-physio-dashboard",
+  "name": "carebridge",
   "version": "1.0.0",
   "private": true,
-  "description": "Demo dashboard for external physiotherapy partner: view physiotherapy-only appointments from Clinicea and edit notes.",
+  "description": "CareBridge: dashboard for the PhysioWay partnership to view physiotherapy-only Clinicea appointments and sync session notes back.",
   "type": "commonjs",
   "main": "server.js",
   "scripts": {

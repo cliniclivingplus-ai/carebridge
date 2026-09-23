@@ -1,8 +1,9 @@
-# Clinicea Physiotherapy Partner Dashboard — Project Plan
+# CareBridge — Project Plan
+### (PhysioWay ⇄ Clinicea integration)
 
 ## 1. Goal
 
-An external physiotherapy company is partnering with the clinic to provide home-visit
+An external physiotherapy company (PhysioWay) is partnering with the clinic to provide home-visit
 physiotherapy. Their staff need to:
 - See **only** physiotherapy appointments (not the clinic's full appointment list)
 - See **only** the specific client(s) they've been assigned, not every physio patient
