@@ -10,6 +10,7 @@ const db = require('./lib/db');
 const mock = require('./lib/mock-data');
 const notifications = require('./lib/notifications');
 const { normalizeAppointment } = require('./lib/webhook-normalize');
+const { ensureDatabaseReady } = require('./lib/db-bootstrap');
 
 // Postgres (Vercel Postgres) when DATABASE_URL is set; local JSON-file store otherwise.
 const store = db.isConfigured() ? require('./lib/store-pg') : require('./lib/store');
@@ -33,6 +34,20 @@ const PHYSIO_FILTER = (process.env.PHYSIO_SERVICE_FILTER || 'physio')
 
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
+
+// In Postgres mode, make sure the schema (and first-run account import) is in place before any
+// request touches the database -- including the session store below. See lib/db-bootstrap.js.
+if (db.isConfigured()) {
+  app.use(async (req, res, next) => {
+    try {
+      await ensureDatabaseReady();
+      next();
+    } catch (err) {
+      console.error('[db] migration failed:', err);
+      res.status(503).json({ error: 'Database is not ready. Please try again shortly.' });
+    }
+  });
+}
 
 const sessionConfig = {
   secret: process.env.SESSION_SECRET || 'dev-secret',
