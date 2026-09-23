@@ -118,7 +118,7 @@ end-to-end flow (including "Simulate: doctor books" / "Simulate: patient books" 
 that fire the exact same code a real webhook would) before real credentials exist.
 
 ```bash
-cd /d/clinicea
+cd /d/Physiowah
 npm install
 cp .env.example .env
 npm start
@@ -131,18 +131,39 @@ Demo login: `physio_jane` / `demo123` (scoped to one mock patient, `pat-501`).
 
 | Layer | Choice | Why |
 |---|---|---|
-| Hosting | Render (web service, `render.yaml` blueprint) | Simple managed deploy, HTTPS + public URL included, matches the app's scale |
-| Database | Managed Postgres (Render-provisioned via the same blueprint) | Reliable, handles concurrent writes, replaces the local JSON file |
-| Sessions | `connect-pg-simple` (DB-backed) in production | Default in-memory session store doesn't survive restarts or multiple instances |
-| Auth | bcrypt-hashed passwords in `partners` table | No more plain-text demo passwords once live |
-| Domain | Render's free subdomain for now; custom domain later | No code changes needed to add one later |
+| Version control | GitHub | Vercel deploys straight from a connected GitHub repo |
+| Hosting | Vercel (serverless functions) | No Render/Supabase — Vercel is a single-vendor stack for hosting + Postgres together |
+| Database | **Vercel Postgres** (created under the project's Storage tab) | Same standard `pg` driver code works unchanged; no Supabase needed |
+| Sessions | `connect-pg-simple` (DB-backed) in production | Vercel functions are stateless between invocations — an in-memory session store wouldn't survive one request to the next, let alone a cold start |
+| Auth | bcrypt-hashed passwords in a `partners` table (in the same Vercel Postgres DB) | Chosen over env-var logins since the partner list is expected to grow — a real table scales better than redeploying to add each person |
+| Domain | Vercel's free `*.vercel.app` subdomain for now; custom domain later | No code changes needed to add one later |
 
 The app auto-detects which mode to run in: no `DATABASE_URL` → local JSON-file store
-(dev); `DATABASE_URL` set → Postgres (production). This was verified working after the
-refactor — same login/scoping/webhook-simulation flow tested successfully in file mode.
+(dev); `DATABASE_URL` set → Postgres (production, via Vercel Postgres). Verified working
+locally after the Vercel refactor — login, per-client scoping, and webhook simulation all
+still function correctly against the new `app.js`/`server.js`/`api/index.js` split.
+
+### Why the code is split into app.js / server.js / api/index.js
+Render (the original plan) expected one long-running Node process (`app.listen()`).
+Vercel runs **serverless functions** instead — no persistent process, no guarantee the
+same instance handles your next request, and everything in memory can vanish between
+calls. So the app is split three ways:
+- **`app.js`** — the actual Express app (all routes, middleware) with no `listen()` call
+- **`server.js`** — local dev only: requires `app.js` and calls `app.listen()`
+- **`api/index.js`** — the Vercel entry point: exports the same Express app directly;
+  Vercel's Node runtime invokes it per-request without ever calling `listen()`
+- **`vercel.json`** — routes `/api/*` and `/webhooks/*` to that function; everything else
+  (the login page, `app.js`/`style.css` in `public/`) is served by Vercel's built-in
+  static hosting for anything under a top-level `public/` folder, no function invoked at all
+
+One consequence of "stateless between requests": the store-seeding step now runs lazily
+inside each route (guarded so concurrent cold starts don't double-seed) rather than once
+at startup, since there is no single "startup" on Vercel.
 
 ### Key files
-- `render.yaml` — one-file deploy blueprint (web service + Postgres + env vars)
+- `vercel.json` — routes API/webhook paths to the serverless function
+- `api/index.js` — Vercel's function entry point (exports the Express app)
+- `app.js` — the actual application logic, shared by both local dev and Vercel
 - `db/schema.sql` — table definitions (`partners`, `appointments`, `session`)
 - `db/migrate.js` — runs schema.sql against `DATABASE_URL` (`npm run db:migrate`)
 - `db/seed-partner.js` — create/update a partner account without hand-writing SQL:
@@ -154,23 +175,30 @@ refactor — same login/scoping/webhook-simulation flow tested successfully in f
 
 ## 7. Deployment checklist
 
-1. [ ] Commit this code to git and push to a GitHub repo (needs your GitHub account)
-2. [ ] Create a Render account, "New → Blueprint", point it at that repo — it reads
-       `render.yaml` and provisions the web service + Postgres database together
-3. [ ] In Render's dashboard, set the real `CLINICEA_API_KEY` (left blank in the blueprint
-       on purpose — never auto-generated or committed to git)
-4. [ ] Confirm the deploy succeeded and note the public URL Render gives you
-5. [ ] In Clinicea, register the 4 webhook URLs using that public URL + the
-       `WEBHOOK_SECRET` Render auto-generated (visible in Render's environment variables tab)
-6. [ ] Create real partner accounts: `npm run db:seed-partner -- ...` (run this against
-       production — either via Render's shell, or locally with `DATABASE_URL` pointed at
-       the production database)
-7. [ ] Capture one real webhook payload (e.g. via webhook.site first, or by inspecting
+1. [ ] Push this repo to GitHub (needs your GitHub account)
+2. [ ] Create a Vercel account, "Add New → Project", import that GitHub repo
+3. [ ] In the Vercel project, go to Storage → Create Database → **Postgres** — this sets
+       `DATABASE_URL` automatically, no Supabase involved
+4. [ ] In Vercel's project Settings → Environment Variables, set: `CLINICEA_API_KEY` (the
+       real scoped key), `SESSION_SECRET` and `WEBHOOK_SECRET` (any long random strings —
+       Vercel doesn't auto-generate these the way Render's blueprint did, so generate them
+       yourself, e.g. `openssl rand -hex 32`), `CLINICEA_BASE_URL`, `PHYSIO_SERVICE_FILTER`
+5. [ ] Run the DB migration against the real database once: `vercel env pull .env` (to get
+       the real `DATABASE_URL` locally), then `npm run db:migrate` — Vercel has no
+       Render-style "run this before every start" hook, so this is a manual one-time step
+       (re-run it after any future schema change)
+6. [ ] Deploy, confirm it succeeds, note the `*.vercel.app` URL
+7. [ ] In Clinicea, register the 4 webhook URLs using that URL + the `WEBHOOK_SECRET` from
+       step 4
+8. [ ] Create real partner accounts: `npm run db:seed-partner -- ...` (run locally with
+       `DATABASE_URL` pointed at the production database, via `vercel env pull`)
+9. [ ] Capture one real webhook payload (e.g. via webhook.site first, or by inspecting
        logs after the first real booking) and adjust `lib/webhook-normalize.js` if the
        field names differ from what's assumed
-8. [ ] Confirm the `ExternalClinician` API role has no Organization/Admin visibility, and
-       that its EMR permissions are locked to view-only (see Section 2)
-9. [ ] (Later, optional) Point a real subdomain at the Render service — no code changes needed
+10. [ ] Confirm the `ExternalClinician` API role has no Organization/Admin visibility, and
+        that its EMR permissions are locked to view-only (see Section 2)
+11. [ ] (Later, optional) Point a real custom domain at the Vercel project — no code
+        changes needed
 
 ## 8. Open decisions / things to revisit
 
