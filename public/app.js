@@ -923,6 +923,7 @@ if (logoutBtn) {
       console.warn('Logout API warning:', err);
     } finally {
       showLogin();
+      window.location.reload();
     }
   });
 }

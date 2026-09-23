@@ -203,7 +203,10 @@ app.post('/api/team', requireAuth, requireRole(['sales', 'clp_doctor']), async (
 });
 
 app.post('/api/logout', (req, res) => {
-  req.session.destroy(() => res.json({ ok: true }));
+  req.session.destroy(() => {
+    res.clearCookie('connect.sid', { path: '/' });
+    res.json({ ok: true });
+  });
 });
 
 app.get('/api/me', (req, res) => {
