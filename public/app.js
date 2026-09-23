@@ -992,6 +992,18 @@ const editTeamEmail = document.getElementById('edit-team-email');
 const editTeamPhone = document.getElementById('edit-team-phone');
 const editTeamPassword = document.getElementById('edit-team-password');
 
+const teamCreateModal = document.getElementById('team-create-modal');
+const closeTeamCreateModal = document.getElementById('close-team-create-modal');
+const btnCancelTeamCreate = document.getElementById('btn-cancel-team-create');
+const teamCreateForm = document.getElementById('team-create-form');
+const createTeamName = document.getElementById('create-team-name');
+const createTeamUsername = document.getElementById('create-team-username');
+const createTeamPassword = document.getElementById('create-team-password');
+const createTeamRole = document.getElementById('create-team-role');
+const createTeamEmail = document.getElementById('create-team-email');
+const createTeamPhone = document.getElementById('create-team-phone');
+const teamCreateError = document.getElementById('team-create-error');
+
 function renderTeamList() {
   if (!teamMembersList) return;
   const query = (teamSearchInput ? teamSearchInput.value : '').toLowerCase().trim();
@@ -1086,10 +1098,51 @@ if (teamSearchInput) teamSearchInput.addEventListener('input', () => renderTeamL
 
 if (btnAddTeamMember) {
   btnAddTeamMember.addEventListener('click', () => {
-    if (teamModal) teamModal.hidden = true;
-    showAuthTab('register');
-    if (loginScreen) loginScreen.hidden = false;
-    if (appScreen) appScreen.hidden = true;
+    if (teamCreateForm) teamCreateForm.reset();
+    if (teamCreateError) teamCreateError.textContent = '';
+    if (teamCreateModal) teamCreateModal.hidden = false;
+  });
+}
+
+if (closeTeamCreateModal) closeTeamCreateModal.addEventListener('click', () => (teamCreateModal.hidden = true));
+if (btnCancelTeamCreate) btnCancelTeamCreate.addEventListener('click', () => (teamCreateModal.hidden = true));
+
+if (teamCreateForm) {
+  teamCreateForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    if (teamCreateError) teamCreateError.textContent = '';
+    const name = createTeamName.value.trim();
+    const username = createTeamUsername.value.trim();
+    const password = createTeamPassword.value;
+    const role = createTeamRole.value;
+    const email = createTeamEmail.value.trim();
+    const phone = createTeamPhone.value.trim();
+
+    if (!name || !username || !password) {
+      if (teamCreateError) teamCreateError.textContent = 'Please fill in Name, Username, and Password';
+      return;
+    }
+    if (password.length < 6) {
+      if (teamCreateError) teamCreateError.textContent = 'Password must be at least 6 characters long';
+      return;
+    }
+
+    const submitBtn = teamCreateForm.querySelector('button[type="submit"]');
+    submitBtn.disabled = true;
+    try {
+      await api('/api/team', {
+        method: 'POST',
+        body: JSON.stringify({ name, username, password, role, email, phone }),
+      });
+      alert(`Team member @${username} created successfully!`);
+      if (teamCreateModal) teamCreateModal.hidden = true;
+      await loadTeam();
+      renderTeamList();
+    } catch (err) {
+      if (teamCreateError) teamCreateError.textContent = err.message || 'Failed to create team member';
+    } finally {
+      submitBtn.disabled = false;
+    }
   });
 }
 

@@ -40,6 +40,7 @@ const sessionConfig = {
     httpOnly: true,
     sameSite: 'lax',
     maxAge: 8 * 60 * 60 * 1000,
+    secure: process.env.NODE_ENV === 'production',
   },
 };
 
@@ -177,34 +178,23 @@ app.post('/api/login', loginLimiter, async (req, res) => {
   res.json({ ok: true, username: user.username, name: user.name, role: user.role });
 });
 
-app.post('/api/register', loginLimiter, async (req, res) => {
-  const { username, password, name } = req.body || {};
+// Create New Team Member (Sales Team & CLP Doctor only)
+app.post('/api/team', requireAuth, requireRole(['sales', 'clp_doctor']), async (req, res) => {
+  const { username, password, name, role, email, phone } = req.body || {};
   if (!username || !password || !name) {
     return res.status(400).json({ error: 'Please provide Name, Username, and Password' });
   }
-  if (password.length < 4) {
-    return res.status(400).json({ error: 'Password must be at least 4 characters long' });
+  if (password.length < 6) {
+    return res.status(400).json({ error: 'Password must be at least 6 characters long' });
+  }
+  const ALLOWED_ROLES = ['sales', 'clp_doctor', 'external_physio'];
+  const targetRole = role || 'external_physio';
+  if (!ALLOWED_ROLES.includes(targetRole)) {
+    return res.status(400).json({ error: 'Invalid role. Must be sales, clp_doctor, or external_physio' });
   }
   try {
-    const user = await partners.registerUser({ username, password, name });
-    req.session.user = user;
-    res.json({ ok: true, username: user.username, name: user.name, role: user.role });
-  } catch (err) {
-    res.status(400).json({ error: err.message });
-  }
-});
-
-app.post('/api/forgot-password', loginLimiter, async (req, res) => {
-  const { username, newPassword } = req.body || {};
-  if (!username || !newPassword) {
-    return res.status(400).json({ error: 'Please provide Username and New Password' });
-  }
-  if (newPassword.length < 4) {
-    return res.status(400).json({ error: 'New password must be at least 4 characters long' });
-  }
-  try {
-    await partners.resetPassword(username, newPassword);
-    res.json({ ok: true, message: 'Password updated successfully. Please sign in.' });
+    const user = await partners.registerUser({ username, password, name, role: targetRole, email, phone });
+    res.json({ ok: true, user });
   } catch (err) {
     res.status(400).json({ error: err.message });
   }
@@ -256,6 +246,18 @@ app.delete('/api/me', requireAuth, async (req, res) => {
 app.put('/api/team/:username', requireAuth, requireRole(['sales', 'clp_doctor']), async (req, res) => {
   const targetUsername = req.params.username;
   const { name, email, phone, role, password } = req.body || {};
+
+  const ALLOWED_ROLES = ['sales', 'clp_doctor', 'external_physio'];
+  if (role && !ALLOWED_ROLES.includes(role)) {
+    return res.status(400).json({ error: 'Invalid role. Must be sales, clp_doctor, or external_physio' });
+  }
+  if (password && password.length < 6) {
+    return res.status(400).json({ error: 'Password must be at least 6 characters long' });
+  }
+  if (targetUsername === req.session.user.username && role && role !== req.session.user.role) {
+    return res.status(400).json({ error: 'You cannot demote or change your own active role.' });
+  }
+
   try {
     const updated = await partners.updateTeamMember(targetUsername, { name, email, phone, role, password });
     res.json({ ok: true, user: updated });
@@ -267,6 +269,9 @@ app.put('/api/team/:username', requireAuth, requireRole(['sales', 'clp_doctor'])
 // Delete Specific Team Account (Sales & Doctor only)
 app.delete('/api/team/:username', requireAuth, requireRole(['sales', 'clp_doctor']), async (req, res) => {
   const targetUsername = req.params.username;
+  if (targetUsername === req.session.user.username) {
+    return res.status(400).json({ error: 'You cannot delete your own active account from Team Manager.' });
+  }
   try {
     await partners.deleteAccount(targetUsername);
     res.json({ ok: true, message: `Account ${targetUsername} deleted successfully` });
@@ -370,8 +375,10 @@ async function scanForNewBookings() {
 // public URLs otherwise. Run this every few minutes in production.
 app.get('/api/cron/scan-new-bookings', async (req, res) => {
   const configured = process.env.CRON_SECRET;
-  const provided = req.headers['x-cron-secret'] || req.query.secret;
-  if (configured && provided !== configured) return res.status(404).end();
+  const authHeader = req.headers.authorization;
+  const isBearerMatch = authHeader && authHeader === `Bearer ${configured}`;
+  const isCustomMatch = req.headers['x-cron-secret'] === configured;
+  if (configured && !isBearerMatch && !isCustomMatch) return res.status(401).json({ error: 'Unauthorized' });
   try {
     const result = await scanForNewBookings();
     res.json({ ok: true, ...result });
@@ -482,12 +489,28 @@ app.post('/api/patients/plan/:patientId', requireAuth, requireRole(['sales', 'cl
 });
 
 // POST /api/appointments/:id/feedback (Structured Physio Feedback & Clinicea Sync)
-app.post('/api/appointments/:id/feedback', requireAuth, async (req, res) => {
+app.post('/api/appointments/:id/feedback', requireAuth, requireRole(['external_physio', 'clp_doctor']), async (req, res) => {
   const { painLevel, mobilityStatus, exercisesCompleted, patientCompliance, clinicalNotes } = req.body || {};
 
   const all = await store.getAll();
   const existing = all.find((a) => a.AppointmentID === req.params.id);
   if (!existing) return res.status(404).json({ error: 'Appointment not found' });
+  if (!existing.PatientID || existing.PatientID === 'UNASSIGNED') {
+    return res.status(400).json({ error: 'Cannot record feedback: Appointment has no linked patient' });
+  }
+
+  const currentPlan = await plans.getPlan(existing.PatientID);
+  if (!currentPlan.enrolled || currentPlan.allottedSessions <= 0) {
+    return res.status(400).json({ error: 'Cannot record feedback: Patient is not enrolled in a session plan' });
+  }
+  if (currentPlan.completedSessions >= currentPlan.allottedSessions) {
+    return res.status(400).json({ error: `All allotted sessions (${currentPlan.allottedSessions}) for this patient are already completed` });
+  }
+
+  // Prevent duplicate feedback submission for the same appointment ID
+  if (existing.feedbackLogged || (existing.notes && existing.notes.includes('[PhysioWay Feedback'))) {
+    return res.status(400).json({ error: 'Visit feedback has already been recorded for this appointment' });
+  }
 
   const feedbackData = {
     painLevel: painLevel || 'N/A',
@@ -497,7 +520,7 @@ app.post('/api/appointments/:id/feedback', requireAuth, async (req, res) => {
     clinicalNotes: clinicalNotes || '',
   };
 
-  const { plan: updatedPlan, feedbackEntry } = await plans.recordSessionFeedback(existing.PatientID || 'UNASSIGNED', feedbackData, req.session.user.username);
+  const { plan: updatedPlan, feedbackEntry } = await plans.recordSessionFeedback(existing.PatientID, feedbackData, req.session.user.username);
 
   const formattedNote = `[PhysioWay Feedback - Session ${feedbackEntry.sessionNumber} of ${feedbackEntry.totalAllotted}] Pain: ${feedbackData.painLevel}/10 | Mobility: ${feedbackData.mobilityStatus} | Compliance: ${feedbackData.patientCompliance} | Exercises: ${feedbackData.exercisesCompleted} | Notes: ${feedbackData.clinicalNotes}`.trim();
 

@@ -25,12 +25,6 @@
       </div>
       <h2>CLP + PhysioWay Portal</h2>
       <p class="subtitle">Access home-visit sessions &amp; notes for your team</p>
-      
-      <!-- Auth Mode Switch Tabs -->
-      <div class="auth-tabs">
-        <button id="tab-login" class="auth-tab active" type="button">Sign In</button>
-        <button id="tab-register" class="auth-tab" type="button">Create Account</button>
-      </div>
 
       <!-- Sign In Form -->
       <form id="login-form" class="auth-form">
@@ -43,10 +37,7 @@
         </div>
 
         <div class="input-group">
-          <div class="label-row">
-            <label for="password">Password</label>
-            <button type="button" id="link-forgot-pw" class="text-link">Forgot password?</button>
-          </div>
+          <label for="password">Password</label>
           <div class="input-wrapper">
             <svg class="input-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
             <input type="password" id="password" autocomplete="current-password" placeholder="••••••••" required />
@@ -67,78 +58,6 @@
           <button type="button" class="btn-demo-login" data-user="physio_jane" data-pass="demo123">Physio Jane</button>
         </div>
         <p id="login-error" class="error"></p>
-      </form>
-
-      <!-- Register / Create Account Form -->
-      <form id="register-form" class="auth-form" hidden>
-        <div class="input-group">
-          <label for="reg-name">Full Name</label>
-          <div class="input-wrapper">
-            <svg class="input-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-            <input type="text" id="reg-name" placeholder="e.g. Dr. Alex Morgan" required />
-          </div>
-        </div>
-
-        <div class="input-group">
-          <label for="reg-username">Username</label>
-          <div class="input-wrapper">
-            <svg class="input-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v8"/><path d="M8 12h8"/></svg>
-            <input type="text" id="reg-username" autocomplete="username" placeholder="e.g. physio_alex" required />
-          </div>
-        </div>
-
-        <div class="input-group">
-          <label for="reg-password">Password</label>
-          <div class="input-wrapper">
-            <svg class="input-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
-            <input type="password" id="reg-password" autocomplete="new-password" placeholder="Min. 4 characters" required />
-            <button type="button" class="btn-toggle-pw" data-target="reg-password" title="Show/Hide Password" aria-label="Show or hide password">
-              <svg class="eye-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
-            </button>
-          </div>
-        </div>
-
-        <button type="submit" class="btn-primary">
-          <span>Create Partner Account</span>
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
-        </button>
-        <p id="reg-error" class="error"></p>
-        <p id="reg-success" class="success-msg"></p>
-      </form>
-
-      <!-- Forgot Password Form -->
-      <form id="forgot-form" class="auth-form" hidden>
-        <div class="form-banner">
-          <strong>Password Recovery</strong>
-          <p>Reset password for your CLP + PhysioWay account.</p>
-        </div>
-
-        <div class="input-group">
-          <label for="forgot-username">Username</label>
-          <div class="input-wrapper">
-            <svg class="input-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-            <input type="text" id="forgot-username" placeholder="Your username" required />
-          </div>
-        </div>
-
-        <div class="input-group">
-          <label for="forgot-new-password">New Password</label>
-          <div class="input-wrapper">
-            <svg class="input-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
-            <input type="password" id="forgot-new-password" placeholder="Enter new password" required />
-            <button type="button" class="btn-toggle-pw" data-target="forgot-new-password" title="Show/Hide Password" aria-label="Show or hide password">
-              <svg class="eye-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
-            </button>
-          </div>
-        </div>
-
-        <button type="submit" class="btn-primary">
-          <span>Reset Password &amp; Update</span>
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
-        </button>
-        <button type="button" id="btn-back-to-login" class="btn-secondary">Back to Sign In</button>
-        <p id="forgot-error" class="error"></p>
-        <p id="forgot-success" class="success-msg"></p>
       </form>
     </div>
   </div>
@@ -524,6 +443,61 @@
           <button type="button" id="btn-cancel-team-edit" class="btn-secondary">Cancel</button>
           <button type="submit" class="btn-primary">Save Changes</button>
         </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Create New Team Member Modal (Sales & CLP Doctor) -->
+  <div id="team-create-modal" class="modal-backdrop" hidden>
+    <div class="modal-card glass-card">
+      <div class="modal-header">
+        <div>
+          <h3>Add New Team Member</h3>
+          <p>Sales &amp; CLP Doctor: Create a new team account</p>
+        </div>
+        <button id="close-team-create-modal" class="close-btn" type="button">&times;</button>
+      </div>
+
+      <form id="team-create-form" class="auth-form">
+        <div class="input-group">
+          <label for="create-team-name">Full Name</label>
+          <input type="text" id="create-team-name" placeholder="e.g. Dr. Alex Morgan" required />
+        </div>
+
+        <div class="input-group">
+          <label for="create-team-username">Username</label>
+          <input type="text" id="create-team-username" placeholder="e.g. physio_alex" required />
+        </div>
+
+        <div class="input-group">
+          <label for="create-team-password">Password</label>
+          <input type="password" id="create-team-password" placeholder="Min. 6 characters" required />
+        </div>
+
+        <div class="input-group">
+          <label for="create-team-role">Account Department / Role</label>
+          <select id="create-team-role" class="styled-select" required>
+            <option value="external_physio" selected>PhysioWay Physio (Default)</option>
+            <option value="sales">Sales Team</option>
+            <option value="clp_doctor">CLP Doctor</option>
+          </select>
+        </div>
+
+        <div class="input-group">
+          <label for="create-team-email">Email Address (Optional)</label>
+          <input type="email" id="create-team-email" placeholder="email@example.com" />
+        </div>
+
+        <div class="input-group">
+          <label for="create-team-phone">Phone Number (Optional)</label>
+          <input type="text" id="create-team-phone" placeholder="+91..." />
+        </div>
+
+        <div class="modal-footer">
+          <button type="button" id="btn-cancel-team-create" class="btn-secondary">Cancel</button>
+          <button type="submit" class="btn-primary">Create Account</button>
+        </div>
+        <p id="team-create-error" class="error"></p>
       </form>
     </div>
   </div>
