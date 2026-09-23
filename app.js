@@ -147,6 +147,39 @@ app.post('/api/login', loginLimiter, async (req, res) => {
   res.json({ ok: true, username: user.username, name: user.name });
 });
 
+app.post('/api/register', loginLimiter, async (req, res) => {
+  const { username, password, name } = req.body || {};
+  if (!username || !password || !name) {
+    return res.status(400).json({ error: 'Please provide Name, Username, and Password' });
+  }
+  if (password.length < 4) {
+    return res.status(400).json({ error: 'Password must be at least 4 characters long' });
+  }
+  try {
+    const user = await partners.registerUser({ username, password, name });
+    req.session.user = user;
+    res.json({ ok: true, username: user.username, name: user.name });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+app.post('/api/forgot-password', loginLimiter, async (req, res) => {
+  const { username, newPassword } = req.body || {};
+  if (!username || !newPassword) {
+    return res.status(400).json({ error: 'Please provide Username and New Password' });
+  }
+  if (newPassword.length < 4) {
+    return res.status(400).json({ error: 'New password must be at least 4 characters long' });
+  }
+  try {
+    await partners.resetPassword(username, newPassword);
+    res.json({ ok: true, message: 'Password updated successfully. Please sign in.' });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
 app.post('/api/logout', (req, res) => {
   req.session.destroy(() => res.json({ ok: true }));
 });
@@ -160,9 +193,34 @@ app.get('/api/me', (req, res) => {
 // the partner company (not this app) decides internally who covers each home visit, via
 // the assignment endpoint below. There is no per-patient access restriction here.
 
+// seedStoreIfEmpty() only ever pulls from Clinicea once, the very first time the store is
+// empty -- after that it relied entirely on webhooks to learn about new/changed appointments.
+// Since webhooks require a public URL registered in Clinicea (not set up until this is
+// deployed), an appointment added directly in Clinicea's Calendar had no way to reach the
+// dashboard at all. This re-pulls the viewed date from Clinicea on every read instead,
+// throttled per-date so the 4s dashboard poll doesn't hammer the Clinicea API.
+const lastLiveFetch = new Map(); // date -> timestamp ms
+const LIVE_REFRESH_INTERVAL_MS = 15 * 1000;
+
+async function refreshDateFromClinieaIfDue(date) {
+  if (!clinicea.isLiveMode()) return;
+  const last = lastLiveFetch.get(date) || 0;
+  if (Date.now() - last < LIVE_REFRESH_INTERVAL_MS) return;
+  lastLiveFetch.set(date, Date.now());
+  try {
+    const fresh = await clinicea.getAppointmentsByDate(date);
+    for (const a of fresh) {
+      await store.upsertAppointment(a);
+    }
+  } catch (err) {
+    console.error(`[refresh] failed to pull ${date} from Clinicea:`, err.message);
+  }
+}
+
 app.get('/api/appointments', requireAuth, async (req, res) => {
   await seedStoreIfEmpty();
   const date = req.query.date || new Date().toISOString().slice(0, 10);
+  await refreshDateFromClinieaIfDue(date);
   const dayAppointments = await store.getByDate(date);
   const visible = dayAppointments.filter(isPhysioAppointment).map(toView);
   res.json({ date, liveMode: clinicea.isLiveMode(), appointments: visible });
