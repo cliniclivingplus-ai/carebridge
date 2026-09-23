@@ -1824,3 +1824,152 @@ body {
 
 
 
+
+/* Read-only physio line on Sales/Doctor case cards */
+.assign-readonly {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+/* Session history: one pill per session, details for the selected one */
+.session-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.session-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 34px;
+  padding: 6px 12px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--text-main);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.session-pill:hover {
+  border-color: var(--primary);
+}
+
+.session-pill.active {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: #ffffff;
+}
+
+.session-pill:focus-visible {
+  outline: 2px solid var(--border-focus);
+  outline-offset: 2px;
+}
+
+.sync-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--text-light);
+  flex-shrink: 0;
+}
+
+.sync-dot.sync-synced { background: var(--success-text); }
+.sync-dot.sync-failed { background: var(--danger-text); }
+.sync-dot.sync-pending { background: var(--pending-text); }
+
+.session-pill.active .sync-dot {
+  box-shadow: 0 0 0 2px #ffffff;
+}
+
+.session-hint {
+  margin: 8px 0 0;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.session-detail {
+  margin-top: 10px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+}
+
+.session-detail-head {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 4px 10px;
+  font-size: 13px;
+}
+
+.session-detail-head span {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.session-sync {
+  display: inline-block;
+  margin-top: 8px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  background: var(--pending-bg);
+  color: var(--pending-text);
+}
+
+.session-sync.sync-synced { background: var(--success-bg); color: var(--success-text); }
+.session-sync.sync-failed { background: var(--danger-bg); color: var(--danger-text); }
+.session-sync.sync-simulated { background: var(--border); color: var(--text-muted); }
+
+.session-group {
+  margin-top: 12px;
+}
+
+.session-group-title {
+  margin-bottom: 4px;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.session-answer {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 13px;
+}
+
+.session-answer:last-child {
+  border-bottom: none;
+}
+
+.session-answer span {
+  color: var(--text-muted);
+}
+
+.session-answer strong {
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+
+.session-notes {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}

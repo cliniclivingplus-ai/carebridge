@@ -200,7 +200,7 @@ function showApp(userObj, liveMode) {
   } else if (currentUserRole === 'external_physio') {
     if (bannerTitle) bannerTitle.textContent = 'Physio Care Portal';
     if (bannerSub) bannerSub.textContent = 'Browse open home-visit cases, claim patient assignments, and record session notes.';
-    if (dateBar) dateBar.hidden = false;
+    if (dateBar) dateBar.hidden = true;
     if (statCard1) statCard1.textContent = 'Total Cases';
     if (statCard2) statCard2.textContent = 'My Claimed Cases';
     if (statCard3) statCard3.textContent = 'Available Open Cases';
@@ -216,7 +216,7 @@ function showApp(userObj, liveMode) {
     // clp_doctor
     if (bannerTitle) bannerTitle.textContent = 'Clinical Director Dashboard';
     if (bannerSub) bannerSub.textContent = 'Full clinical oversight across patient plans, physio assignments, and consultations.';
-    if (dateBar) dateBar.hidden = false;
+    if (dateBar) dateBar.hidden = true;
     if (statCard1) statCard1.textContent = 'Total Cases';
     if (statCard2) statCard2.textContent = 'Assigned Cases';
     if (statCard3) statCard3.textContent = 'Unassigned Cases';
@@ -290,6 +290,72 @@ function updateStats(casesList) {
 
 function filterAppointments() {
   renderCasesList(rawCases);
+}
+
+function escapeHtml(value) {
+  return String(value ?? '').replace(/[&<>"']/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[ch]);
+}
+
+// Question id -> label, from lib/feedback-questions.json, so session details show the same
+// wording as the feedback form (and follow along when the questions change).
+let questionLabels = {};
+let questionOrder = [];
+let questionLabelsLoaded = null;
+function loadQuestionLabels() {
+  if (!questionLabelsLoaded) {
+    questionLabelsLoaded = api('/api/feedback-questions')
+      .then((data) => {
+        const q = data.questionnaire || {};
+        for (const item of [...(q.beforeAssessment || []), ...(q.afterSummary || [])]) {
+          questionLabels[item.id] = String(item.label || item.id).replace(/^\d+\.\s*/, '');
+          questionOrder.push(item.id);
+        }
+      })
+      .catch(() => {
+        questionLabelsLoaded = null;
+      });
+  }
+  return questionLabelsLoaded;
+}
+
+const SYNC_LABELS = {
+  synced: 'Synced to Clinicea',
+  pending: 'Not yet sent to Clinicea',
+  failed: 'Clinicea sync failed',
+  simulated: 'Demo mode, not sent',
+};
+
+// Which session is open on each case card. Kept outside the cards so the 10-second refresh
+// doesn't close the session someone is reading.
+const openSessionByCase = new Map();
+
+function answerRows(answers) {
+  // Same order as the feedback form; answers to questions no longer in the list go last.
+  const rank = (key) => (questionOrder.includes(key) ? questionOrder.indexOf(key) : Infinity);
+  return Object.entries(answers || {})
+    .sort(([a], [b]) => rank(a) - rank(b))
+    .filter(([key, value]) => key !== 'clinicalNotes' && value !== '' && value !== null && value !== undefined)
+    .map(([key, value]) => `<div class="session-answer"><span>${escapeHtml(questionLabels[key] || key)}</span><strong>${escapeHtml(value)}</strong></div>`)
+    .join('');
+}
+
+function sessionDetailHtml(s, allotted) {
+  const when = new Date(s.createdAt || s.scheduledDate).toLocaleString([], { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+  const sync = s.cliniceaSyncStatus || 'pending';
+  const before = answerRows(s.beforeAssessment);
+  const after = answerRows(s.afterSummary);
+  return `
+    <div class="session-detail">
+      <div class="session-detail-head">
+        <strong>Session ${s.sessionNumber} of ${allotted}</strong>
+        <span>${escapeHtml(s.physioUsername ? teamMemberName(s.physioUsername) : 'Physio')} · ${escapeHtml(when)}</span>
+      </div>
+      <div class="session-sync sync-${escapeHtml(sync)}">${escapeHtml(SYNC_LABELS[sync] || sync)}${s.cliniceaSyncError && sync !== 'synced' ? ` <small>(${escapeHtml(s.cliniceaSyncError)})</small>` : ''}</div>
+      ${before ? `<div class="session-group"><div class="session-group-title">Before the session</div>${before}</div>` : ''}
+      ${after ? `<div class="session-group"><div class="session-group-title">After the session</div>${after}</div>` : ''}
+      ${s.clinicalNotes ? `<div class="session-group"><div class="session-group-title">Physio notes</div><p class="session-notes">${escapeHtml(s.clinicalNotes)}</p></div>` : ''}
+    </div>
+  `;
 }
 
 function renderCasesList(casesList) {
@@ -366,6 +432,12 @@ function renderCasesList(casesList) {
         ` : ''}
       </div>
 
+      ${!isPhysio ? `
+      <div class="assign-box assign-readonly">
+        <span class="assign-label">Physio</span>
+        <span class="assigned-tag">${item.assignedPhysio ? escapeHtml(assignedName) : 'Waiting for a physio to take this case'}</span>
+      </div>
+      ` : `
       <div class="assign-box">
         <div class="assign-header">
           <span class="assign-label">Assigned Physio</span>
@@ -383,6 +455,7 @@ function renderCasesList(casesList) {
           ` : ''}
         </div>
       </div>
+      `}
 
       <!-- Feedback Action Button -->
       ${(canRecordFeedback && item.status !== 'completed') ? `
@@ -404,27 +477,18 @@ function renderCasesList(casesList) {
           if (sessions.length === 0) {
             return `<div class="empty-card" style="padding:12px"><p style="font-size:12px; margin:0">No sessions completed yet for this home-visit programme.</p></div>`;
           }
+          const openId = openSessionByCase.get(item.id);
+          const openSession = sessions.find((sess) => sess.id === openId);
           return `
-            <div class="history-timeline">
-              <div class="history-list">
-                ${sessions.slice().reverse().map((s) => `
-                  <div class="history-item">
-                    <div class="history-item-header">
-                      <span class="session-tag">Session ${s.sessionNumber} of ${allotted}</span>
-                      <span class="history-author">${s.physioUsername ? teamMemberName(s.physioUsername) : 'Physio'} • ${new Date(s.createdAt || s.scheduledDate).toLocaleDateString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
-                    </div>
-                    <div class="history-metrics">
-                      <span class="metric-pill pain-pill">Pain (Pre): ${s.beforeAssessment?.painLevelBefore || 'N/A'}/10</span>
-                      <span class="metric-pill pain-pill">Pain (Post): ${s.afterSummary?.painLevelAfter || 'N/A'}/10</span>
-                      <span class="metric-pill">Mobility: ${s.afterSummary?.mobilityStatus || 'N/A'}</span>
-                      <span class="metric-pill">Compliance: ${s.afterSummary?.patientCompliance || 'N/A'}</span>
-                    </div>
-                    ${s.afterSummary?.exercisesCompleted ? `<div class="history-detail"><strong>Exercises:</strong> ${s.afterSummary.exercisesCompleted}</div>` : ''}
-                    ${s.clinicalNotes ? `<div class="history-notes">"${s.clinicalNotes}"</div>` : ''}
-                  </div>
-                `).join('')}
-              </div>
+            <div class="session-pills">
+              ${sessions.map((sess) => `
+                <button type="button" class="session-pill ${sess.id === openId ? 'active' : ''}" data-open-session="${escapeHtml(sess.id)}" data-case="${escapeHtml(item.id)}" aria-expanded="${sess.id === openId}">
+                  <span class="sync-dot sync-${escapeHtml(sess.cliniceaSyncStatus || 'pending')}" title="${escapeHtml(SYNC_LABELS[sess.cliniceaSyncStatus] || '')}"></span>
+                  Session ${sess.sessionNumber}
+                </button>
+              `).join('')}
             </div>
+            ${openSession ? sessionDetailHtml(openSession, allotted) : '<p class="session-hint">Tap a session to see what the physio recorded.</p>'}
           `;
         })()}
       </div>
@@ -436,6 +500,17 @@ function renderCasesList(casesList) {
 }
 
 function attachCardEvents() {
+  // Session pills: open one session's details; tapping the open one closes it.
+  listEl.querySelectorAll('[data-open-session]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const caseId = btn.dataset.case;
+      const sessionId = btn.dataset.openSession;
+      if (openSessionByCase.get(caseId) === sessionId) openSessionByCase.delete(caseId);
+      else openSessionByCase.set(caseId, sessionId);
+      renderCasesList(rawCases);
+    });
+  });
+
   // Claim Case / Take Case button
   listEl.querySelectorAll('[data-claim-case]').forEach((btn) => {
     btn.addEventListener('click', async () => {
@@ -705,6 +780,7 @@ function serverFilterFor(filter) {
 }
 
 async function loadCases() {
+  await loadQuestionLabels();
   const [data, all] = await Promise.all([
     api(`/api/cases?status=${encodeURIComponent(serverFilterFor(activeFilter))}&query=${encodeURIComponent(activeQuery)}`),
     api('/api/cases?status=all'),
