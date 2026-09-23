@@ -554,16 +554,29 @@ app.post('/api/cases', requireAuth, requireRole(['sales', 'clp_doctor']), async 
   if (!patientId || !patientName) {
     return res.status(400).json({ error: 'Please provide Patient ID and Patient Name' });
   }
+  const sessionCount = parseInt(allottedSessions, 10);
+  if (!Number.isInteger(sessionCount) || sessionCount < 1 || sessionCount > 100) {
+    return res.status(400).json({ error: 'Allotted sessions must be a number between 1 and 100' });
+  }
   try {
+    // Resolve Clinicea's internal patient ID on the server rather than trusting the browser:
+    // it's what the encounter sync writes to, and a wrong one would put notes on another patient.
+    let cliniceaPatientId = '';
+    if (clinicea.isLiveMode()) {
+      const patient = await clinicea.getPatientByUniqueId(String(patientId).trim());
+      if (!patient) return res.status(404).json({ error: 'No Clinicea patient found for that ID' });
+      cliniceaPatientId = patient.CliniceaPatientID || '';
+    }
     const newCase = await cases.createCase({
       patientId,
+      cliniceaPatientId,
       patientName,
       patientMobile,
       address,
       city,
       pcode,
       symptomsConcern,
-      allottedSessions,
+      allottedSessions: sessionCount,
       createdBy: req.session.user.username,
       instructions,
     });
@@ -605,15 +618,35 @@ app.post('/api/cases/:id/claim', requireAuth, requireRole(['external_physio', 'c
     const updatedCase = await cases.claimCase(req.params.id, req.session.user.username);
     res.json({ ok: true, case: updatedCase });
   } catch (err) {
-    res.status(400).json({ error: err.message });
+    const status = err.message === 'Case not found' ? 404 : 409;
+    res.status(status).json({ error: err.message });
   }
 });
 
 // PUT /api/cases/:id/assign (Reassign case)
+// Sales/Doctor can (re)assign any case; a physio can only hand over a case they currently own.
 app.put('/api/cases/:id/assign', requireAuth, async (req, res) => {
   const { assignedPhysio } = req.body || {};
+  if (assignedPhysio !== null && assignedPhysio !== undefined && typeof assignedPhysio !== 'string') {
+    return res.status(400).json({ error: 'assignedPhysio must be a username or null' });
+  }
+  const user = req.session.user;
   try {
-    const updatedCase = await cases.assignCase(req.params.id, assignedPhysio);
+    const existing = await cases.getCase(req.params.id);
+    if (!existing) return res.status(404).json({ error: 'Case not found' });
+
+    const isManager = ['sales', 'clp_doctor'].includes(user.role);
+    if (!isManager && existing.assignedPhysio !== user.username) {
+      return res.status(403).json({ error: 'Only the assigned physio, Sales or a Doctor can reassign this case' });
+    }
+    if (assignedPhysio) {
+      const team = await partners.listTeam();
+      const target = team.find((t) => t.username === assignedPhysio);
+      if (!target || !['external_physio', 'clp_doctor'].includes(target.role)) {
+        return res.status(400).json({ error: 'Cases can only be assigned to an existing physio or doctor' });
+      }
+    }
+    const updatedCase = await cases.assignCase(req.params.id, assignedPhysio || null);
     res.json({ ok: true, case: updatedCase });
   } catch (err) {
     res.status(400).json({ error: err.message });
@@ -623,7 +656,16 @@ app.put('/api/cases/:id/assign', requireAuth, async (req, res) => {
 // POST /api/cases/:id/feedback (Record 2-part Visit Feedback for a case)
 app.post('/api/cases/:id/feedback', requireAuth, requireRole(['external_physio', 'clp_doctor']), async (req, res) => {
   const { beforeAssessment, afterSummary, clinicalNotes } = req.body || {};
+  const user = req.session.user;
   try {
+    const existing = await cases.getCase(req.params.id);
+    if (!existing) return res.status(404).json({ error: 'Case not found' });
+    if (!existing.assignedPhysio) {
+      return res.status(409).json({ error: 'Claim this case before recording a session' });
+    }
+    if (user.role !== 'clp_doctor' && existing.assignedPhysio !== user.username) {
+      return res.status(403).json({ error: 'Only the physio assigned to this case can record its sessions' });
+    }
     const result = await cases.recordSessionFeedback(req.params.id, {
       beforeAssessment,
       afterSummary,
@@ -638,7 +680,13 @@ app.post('/api/cases/:id/feedback', requireAuth, requireRole(['external_physio',
 
 // POST /api/sessions/:id/sync (Retry failed Clinicea sync for a session)
 app.post('/api/sessions/:id/sync', requireAuth, async (req, res) => {
+  const user = req.session.user;
   try {
+    const existing = await cases.getSession(req.params.id);
+    if (!existing) return res.status(404).json({ error: 'Session not found' });
+    if (!['sales', 'clp_doctor'].includes(user.role) && existing.physioUsername !== user.username) {
+      return res.status(403).json({ error: "Only the session's physio, Sales or a Doctor can retry its sync" });
+    }
     const updatedSession = await cases.retrySessionSync(req.params.id);
     res.json({ ok: true, session: updatedSession });
   } catch (err) {
@@ -698,6 +746,16 @@ app.post('/webhooks/clinicea/:secret/appointment/delete', webhookLimiter, requir
 // configured, this route does not exist at all -- not hidden, not disabled, absent --
 // so there's no way to inject fake appointments into a production dataset.
 if (DEMO_MODE) {
+  // One-click role switching for demos. Registered only without a Clinicea key, so the live
+  // site has no password-less login route at all.
+  app.post('/api/dev/demo-login', loginLimiter, async (req, res) => {
+    const { username } = req.body || {};
+    const member = (await partners.listTeam()).find((t) => t.username === username);
+    if (!member) return res.status(404).json({ error: 'Unknown demo account' });
+    req.session.user = { username: member.username, name: member.name, role: member.role, allowedPatientIds: [] };
+    res.json({ ok: true, username: member.username, name: member.name, role: member.role });
+  });
+
   const DEMO_PATIENTS = [
     { id: 'pat-501', name: 'Anitha Kumar', mobile: '9876500001', address1: '12 Lake View Road', pcode: '560034' },
     { id: 'pat-503', name: 'Salma Farooq', mobile: '9876500003', address1: '7 Palm Grove Apartments', pcode: '560068' },

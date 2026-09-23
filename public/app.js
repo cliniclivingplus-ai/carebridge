@@ -724,16 +724,20 @@ mobNavItems.forEach((item) => {
   });
 });
 
-// Quick Demo Roles Pills (1-click autofill & login)
+// Quick Demo Roles Pills (1-click login). Only shown in demo mode, and the server only has the
+// /api/dev/demo-login route in demo mode, so this never works against the live site.
 document.querySelectorAll('.btn-demo-login').forEach((btn) => {
   btn.addEventListener('click', async () => {
-    const u = btn.dataset.user;
-    const p = btn.dataset.pass;
-    const usernameInput = document.getElementById('username');
-    const passwordInput = document.getElementById('password');
-    if (usernameInput) usernameInput.value = u;
-    if (passwordInput) passwordInput.value = p;
-    if (loginForm) loginForm.dispatchEvent(new Event('submit'));
+    loginError.textContent = '';
+    try {
+      const data = await api('/api/dev/demo-login', { method: 'POST', body: JSON.stringify({ username: btn.dataset.user }) });
+      showApp(data, false);
+      await loadTeam();
+      await loadCases();
+      startPolling();
+    } catch (err) {
+      loginError.textContent = err.message;
+    }
   });
 });
 
@@ -860,6 +864,8 @@ loginForm.addEventListener('submit', async (e) => {
 (async function init() {
   try {
     const me = await api('/api/me');
+    const demoPill = document.getElementById('demo-accounts-pill');
+    if (demoPill) demoPill.hidden = Boolean(me.liveMode);
     if (me.user) {
       showApp(me.user, me.liveMode);
       await loadTeam();
@@ -872,51 +878,6 @@ loginForm.addEventListener('submit', async (e) => {
     showLogin();
   }
 })();
-
-registerForm.addEventListener('submit', async (e) => {
-  e.preventDefault();
-  const regError = document.getElementById('reg-error');
-  const regSuccess = document.getElementById('reg-success');
-  regError.textContent = '';
-  regSuccess.textContent = '';
-  const name = document.getElementById('reg-name').value;
-  const username = document.getElementById('reg-username').value;
-  const password = document.getElementById('reg-password').value;
-  try {
-    const data = await api('/api/register', { method: 'POST', body: JSON.stringify({ name, username, password }) });
-    regSuccess.textContent = 'Account created successfully! Logging you in...';
-    setTimeout(async () => {
-      datePicker.value = todayStr();
-      showApp(data, false);
-      await loadTeam();
-      await loadAppointments();
-      startPolling();
-    }, 800);
-  } catch (err) {
-    regError.textContent = err.message;
-  }
-});
-
-forgotForm.addEventListener('submit', async (e) => {
-  e.preventDefault();
-  const forgotError = document.getElementById('forgot-error');
-  const forgotSuccess = document.getElementById('forgot-success');
-  forgotError.textContent = '';
-  forgotSuccess.textContent = '';
-  const username = document.getElementById('forgot-username').value;
-  const newPassword = document.getElementById('forgot-new-password').value;
-  try {
-    const data = await api('/api/forgot-password', { method: 'POST', body: JSON.stringify({ username, newPassword }) });
-    forgotSuccess.textContent = data.message || 'Password updated! Switching to sign in...';
-    setTimeout(() => {
-      showAuthTab('login');
-      document.getElementById('username').value = username;
-      document.getElementById('password').value = newPassword;
-    }, 1200);
-  } catch (err) {
-    forgotError.textContent = err.message;
-  }
-});
 
 if (logoutBtn) {
   logoutBtn.addEventListener('click', async () => {
@@ -1219,22 +1180,3 @@ if (teamEditForm) {
     }
   });
 }
-
-(async function init() {
-  datePicker.value = todayStr();
-  dateDisplayStr.textContent = 'Today';
-  try {
-    const me = await api('/api/me');
-    if (me.user) {
-      showApp(me.user, me.liveMode);
-      await loadTeam();
-      await loadAppointments();
-      startPolling();
-    } else {
-      showLogin();
-    }
-  } catch (err) {
-    showLogin();
-  }
-})();
-

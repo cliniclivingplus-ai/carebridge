@@ -128,3 +128,8 @@ CREATE INDEX IF NOT EXISTS idx_sessions_case_id ON sessions (case_id);
 CREATE INDEX IF NOT EXISTS idx_sessions_patient_id ON sessions (patient_id);
 CREATE INDEX IF NOT EXISTS idx_sessions_status ON sessions (status);
 
+-- Clinicea's internal patient GUID (patient record `ID`), needed for patient-level API calls such
+-- as createEncounterFull. patient_id keeps the human-facing File Number used for lookup.
+ALTER TABLE cases ADD COLUMN IF NOT EXISTS clinicea_patient_id TEXT NOT NULL DEFAULT '';
+-- Why a session's Clinicea sync is pending/failed, so the reason is visible rather than guessed.
+ALTER TABLE sessions ADD COLUMN IF NOT EXISTS clinicea_sync_error TEXT;

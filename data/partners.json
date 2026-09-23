@@ -1,47 +1,47 @@
 [
   {
     "username": "sales_user",
-    "password": "demo123",
     "name": "Sales Team",
     "role": "sales",
     "email": "sales@example.com",
     "phone": "+910000000000",
-    "allowedPatientIds": []
+    "allowedPatientIds": [],
+    "passwordHash": "$2a$10$fqIFXyOJt5O1nVloefGvKuhnzdRW2W7wWzyp1t2AWPWo6zGoyRZAe"
   },
   {
     "username": "dr_ritika",
-    "password": "demo123",
     "name": "Dr. Ritika",
     "role": "clp_doctor",
     "email": "dr.ritika@example.com",
     "phone": "+910000000099",
-    "allowedPatientIds": []
+    "allowedPatientIds": [],
+    "passwordHash": "$2a$10$jHdRe0s6uF29.NEzTPEno.8qrQDcuYZHrnFFuHSvkL2.EREL9NN22"
   },
   {
     "username": "physio_jane",
-    "password": "demo123",
     "name": "Jane Fernandes",
     "role": "external_physio",
     "email": "jane.demo@example.com",
     "phone": "+910000000001",
-    "allowedPatientIds": []
+    "allowedPatientIds": [],
+    "passwordHash": "$2a$10$F6CzVLCZ9wIEzKtUXQwRreAeD59y1M2omLJKx1r5CG6tMPX8oDGcW"
   },
   {
     "username": "physio_raj",
-    "password": "demo123",
     "name": "Raj Malhotra",
     "role": "external_physio",
     "email": "raj.demo@example.com",
     "phone": "+910000000002",
-    "allowedPatientIds": []
+    "allowedPatientIds": [],
+    "passwordHash": "$2a$10$YHaWMbwFA/1q/gumRcJf9.rr7OZq8.hcitJrT3P8jSHc63RFnnVW."
   },
   {
     "username": "physio_meera",
-    "password": "demo123",
     "name": "Meera Nair",
     "role": "external_physio",
     "email": "meera.demo@example.com",
     "phone": "+910000000003",
-    "allowedPatientIds": []
+    "allowedPatientIds": [],
+    "passwordHash": "$2a$10$kQiAGvXFBo.H.OuZJgYw3eYiFnfeRUXQDtCNO/twgMIk0AFzoh.EG"
   }
 ]
