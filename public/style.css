@@ -2215,3 +2215,7 @@ body {
 .session-answer strong {
   white-space: pre-line;
 }
+
+.chip-icon, .icon-inline, .icon-sm { flex-shrink: 0; vertical-align: -2px; }
+
+.chip { display: inline-flex; align-items: center; gap: 6px; }

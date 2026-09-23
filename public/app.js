@@ -152,7 +152,12 @@ function updateFilterChipLabels(labels) {
   filterChips.forEach((chip) => {
     const filterKey = chip.dataset.filter;
     if (labels[filterKey]) {
-      chip.textContent = labels[filterKey];
+      const span = chip.querySelector('span');
+      if (span) {
+        span.textContent = labels[filterKey];
+      } else {
+        chip.textContent = labels[filterKey];
+      }
     }
   });
 }
@@ -200,10 +205,10 @@ function showApp(userObj, liveMode) {
     if (statCard3) statCard3.textContent = 'Available Open Cases';
 
     updateFilterChipLabels({
-      open: '🔓 Open Cases (Claimable)',
-      mine: '👤 My Cases',
-      all: '📋 All Cases',
-      completed: '✅ Completed'
+      open: 'Open Cases (Claimable)',
+      mine: 'My Cases',
+      all: 'All Cases',
+      completed: 'Completed'
     });
     updateMobileNavLabels('Open Cases', 'My Cases');
     orderFilterChips(['all', 'completed', 'open', 'mine']);
@@ -212,7 +217,7 @@ function showApp(userObj, liveMode) {
     // Sales and Doctor do the same job on this screen (enrol patients, watch progress), so they
     // get the same layout and the same words -- only the page title differs.
     const isDoctor = currentUserRole === 'clp_doctor';
-    if (bannerTitle) bannerTitle.textContent = isDoctor ? 'Clinical Director Dashboard' : 'Sales Enrollment Portal';
+    if (bannerTitle) bannerTitle.textContent = isDoctor ? 'Clinical Director Dashboard' : 'Sales Enrolment Portal';
     if (bannerSub) bannerSub.textContent = isDoctor
       ? 'Enrol patients by Clinicea ID, follow every home-visit programme, and review session notes.'
       : 'Search patients by Clinicea ID, set up home visit plans, and monitor physio assignments.';
@@ -223,16 +228,16 @@ function showApp(userObj, liveMode) {
         mainContent.insertBefore(lookupSection, roleBanner.nextElementSibling);
       }
     }
-    if (statCard1) statCard1.textContent = 'Total Enrollments';
+    if (statCard1) statCard1.textContent = 'Total Enrolments';
     if (statCard2) statCard2.textContent = 'Assigned Cases';
     if (statCard3) statCard3.textContent = 'Unassigned Cases';
 
     // "Assigned" = a physio has taken it and sessions remain; "Unassigned" = no physio yet.
     updateFilterChipLabels({
-      all: '📌 All Enrollments',
-      completed: '✅ Completed',
-      mine: '🩺 Assigned Cases',
-      open: '⏳ Unassigned Cases'
+      all: 'All Enrolments',
+      completed: 'Completed',
+      mine: 'Assigned Cases',
+      open: 'Unassigned Cases'
     });
     updateMobileNavLabels('Unassigned', 'Assigned');
     orderFilterChips(['all', 'completed', 'mine', 'open']);
@@ -264,7 +269,7 @@ function sourceLabel(source) {
 function syncLabel(status) {
   if (status === 'pending') return 'Syncing...';
   if (status === 'failed') return 'Saved in CareBridge';
-  return 'Synced to Clinicea ✓';
+  return 'Synced to Clinicea';
 }
 function teamMemberName(username) {
   const member = team.find((t) => t.username === username);
@@ -353,7 +358,7 @@ function findQuestion(id) {
 }
 
 function formatExercise(ex) {
-  const dose = [ex.sets && `${ex.sets} set${ex.sets === '1' ? '' : 's'}`, ex.reps && `${ex.reps} reps`].filter(Boolean).join(' × ');
+  const dose = [ex.sets && `${ex.sets} set${ex.sets === '1' ? '' : 's'}`, ex.reps && `${ex.reps} reps`].filter(Boolean).join(' x ');
   const extra = [dose, ex.frequency].filter(Boolean).join(', ');
   return extra ? `${ex.name} (${extra})` : ex.name;
 }
@@ -403,7 +408,7 @@ function sessionDetailHtml(s, allotted) {
     <div class="session-detail">
       <div class="session-detail-head">
         <strong>Session ${s.sessionNumber} of ${allotted}</strong>
-        <span>${escapeHtml(s.physioUsername ? teamMemberName(s.physioUsername) : 'Physio')} · ${escapeHtml(when)}</span>
+        <span>${escapeHtml(s.physioUsername ? teamMemberName(s.physioUsername) : 'Physio')} - ${escapeHtml(when)}</span>
       </div>
       <div class="session-sync sync-${escapeHtml(sync)}">${escapeHtml(SYNC_LABELS[sync] || sync)}${s.cliniceaSyncError && sync !== 'synced' ? ` <small>(${escapeHtml(s.cliniceaSyncError)})</small>` : ''}</div>
       ${before ? `<div class="session-group"><div class="session-group-title">${escapeHtml(sectionTitle('beforeAssessment', 'Session details'))}</div>${before}</div>` : ''}
@@ -934,14 +939,14 @@ if (lookupForm) {
       lookupResult.hidden = false;
       lookupResult.innerHTML = `
         <div class="patient-lookup-card">
-          <div class="lookup-patient-name">${p.name} <span class="patient-id-tag">${p.id}</span></div>
+          <div class="lookup-patient-name">${escapeHtml(p.name)} <span class="patient-id-tag">${escapeHtml(p.id)}</span></div>
           <div class="lookup-patient-details">
-            <span>📞 ${p.mobile || 'No mobile'}</span>
-            <span>📍 ${p.address || 'No address'}</span>
-            ${p.bloodGroup ? `<span>🩸 Blood Group: ${p.bloodGroup}</span>` : ''}
+            <span><svg class="icon-inline" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg> ${escapeHtml(p.mobile || 'No mobile')}</span>
+            <span><svg class="icon-inline" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg> ${escapeHtml(p.address || 'No address')}</span>
+            ${p.bloodGroup ? `<span><svg class="icon-inline" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z"/></svg> Blood Group: ${escapeHtml(p.bloodGroup)}</span>` : ''}
           </div>
-          ${p.notes ? `<div class="lookup-notes"><strong>Notes:</strong> ${p.notes}</div>` : ''}
-          <button class="pill-btn btn-enroll-now" style="margin-top:10px">Enroll in Home-Visit Case</button>
+          ${p.notes ? `<div class="lookup-notes"><strong>Notes:</strong> ${escapeHtml(p.notes)}</div>` : ''}
+          <button class="pill-btn btn-enroll-now" style="margin-top:10px">Enrol in Home-Visit Case</button>
         </div>
       `;
 
@@ -1102,11 +1107,11 @@ if (lookupForm) {
       lookupResult.innerHTML = `
         <div class="lookup-card">
           <div class="lookup-result-name">${p.name || 'Unknown name'} <span class="patient-id-tag">(${p.id || id})</span></div>
-          <div class="lookup-result-row"><strong>Mobile:</strong> ${p.mobile || '—'}</div>
-          <div class="lookup-result-row"><strong>Address:</strong> ${p.address || '—'}</div>
-          <div class="lookup-result-row"><strong>Blood group:</strong> ${p.bloodGroup || '—'}</div>
-          <div class="lookup-result-row"><strong>Allergies:</strong> ${p.allergies || '—'}</div>
-          <div class="lookup-result-row"><strong>Clinicea Notes:</strong> ${p.notes || '—'}</div>
+          <div class="lookup-result-row"><strong>Mobile:</strong> ${p.mobile || '-'}</div>
+          <div class="lookup-result-row"><strong>Address:</strong> ${p.address || '-'}</div>
+          <div class="lookup-result-row"><strong>Blood group:</strong> ${p.bloodGroup || '-'}</div>
+          <div class="lookup-result-row"><strong>Allergies:</strong> ${p.allergies || '-'}</div>
+          <div class="lookup-result-row"><strong>Clinicea Notes:</strong> ${p.notes || '-'}</div>
 
           <div class="lookup-enrolment-strip">
             <div class="enrolment-status ${isEnrolled ? 'status-enrolled' : 'status-not-enrolled'}">
@@ -1338,8 +1343,8 @@ function renderTeamList() {
           <span class="role-badge role-${member.role || 'external_physio'}">${roleLabel(member.role)}</span>
         </div>
         <div class="team-member-contact">
-          <span>📧 ${member.email || 'No email set'}</span>
-          <span>📞 ${member.phone || 'No phone set'}</span>
+          <span><svg class="icon-inline" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg> ${escapeHtml(member.email || 'No email set')}</span>
+          <span><svg class="icon-inline" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg> ${escapeHtml(member.phone || 'No phone set')}</span>
         </div>
       </div>
       <div class="team-card-actions">
