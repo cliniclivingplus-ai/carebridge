@@ -77,13 +77,27 @@ const webhookLimiter = rateLimit({
   legacyHeaders: false,
 });
 
+// Patient lookup returns real PHI on demand -- capped harder than normal dashboard reads so a
+// logged-in account can't be used to enumerate/scrape patient records at speed.
+const patientLookupLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many lookups. Slow down and try again shortly.' },
+});
+
 function requireAuth(req, res, next) {
   if (req.session && req.session.user) return next();
   return res.status(401).json({ error: 'Not logged in' });
 }
 
 function isPhysioAppointment(appt) {
-  const haystack = `${appt.AppointmentServiceName || ''} ${appt.AppointmentServiceCategory || ''}`.toLowerCase();
+  if (PHYSIO_FILTER.includes('*') || PHYSIO_FILTER.includes('all') || PHYSIO_FILTER.includes('any')) {
+    return true;
+  }
+  const haystack = `${appt.AppointmentServiceName || ''} ${appt.AppointmentServiceCategory || ''} ${appt.AppointmentPractionerName || ''}`.toLowerCase().trim();
+  if (!haystack) return false;
   return PHYSIO_FILTER.some((term) => haystack.includes(term));
 }
 
@@ -158,6 +172,38 @@ app.get('/api/appointments', requireAuth, async (req, res) => {
 app.get('/api/team', requireAuth, async (req, res) => {
   const team = await partners.listTeam();
   res.json({ team });
+});
+
+// ---------- Patient lookup by Clinicea unique ID ----------
+// Deliberately returns only a curated field set (name, mobile, address, blood group,
+// allergies, notes) -- whatever else Clinicea's patient record contains is never sent to
+// the client, regardless of what the underlying API call returns. This is the actual
+// access-control boundary for this feature, since Clinicea's own Role permissions don't
+// reliably restrict the API (confirmed empirically -- see conversation).
+function toPatientLookupView(p) {
+  return {
+    id: p.PatientID,
+    name: p.Name,
+    mobile: p.Mobile,
+    address: p.Address,
+    bloodGroup: p.BloodGroup,
+    allergies: p.Allergies,
+    notes: p.Notes,
+  };
+}
+
+app.get('/api/patients/lookup', requireAuth, patientLookupLimiter, async (req, res) => {
+  const id = (req.query.id || '').trim();
+  if (!id) return res.status(400).json({ error: 'id is required' });
+  try {
+    const patient = await clinicea.getPatientByUniqueId(id);
+    console.log(`[patient-lookup] user=${req.session.user.username} id=${id} found=${Boolean(patient)}`);
+    if (!patient) return res.status(404).json({ error: 'No patient found for that ID' });
+    res.json({ patient: toPatientLookupView(patient) });
+  } catch (err) {
+    console.error('[patient-lookup] error', err);
+    res.status(502).json({ error: `Lookup failed: ${err.message}` });
+  }
 });
 
 app.put('/api/appointments/:id/assign', requireAuth, async (req, res) => {
