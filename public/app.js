@@ -175,14 +175,34 @@ function showApp(userObj, liveMode) {
   const statCard2 = document.querySelector('.stats-grid .stat-card:nth-child(2) .stat-label');
   const statCard3 = document.querySelector('.stats-grid .stat-card:nth-child(3) .stat-label');
 
-  if (currentUserRole === 'sales') {
-    if (bannerTitle) bannerTitle.textContent = 'Sales Enrolment Portal';
-    if (bannerSub) bannerSub.textContent = 'Search patients by Clinicea ID, set up home visit plans, and monitor physio assignments.';
-    if (dateBar) dateBar.hidden = true;
+  if (dateBar) dateBar.hidden = true;
+
+  if (currentUserRole === 'external_physio') {
+    if (bannerTitle) bannerTitle.textContent = 'Physio Care Portal';
+    if (bannerSub) bannerSub.textContent = 'Browse open home-visit cases, claim patient assignments, and record session notes.';
+    if (statCard1) statCard1.textContent = 'Total Cases';
+    if (statCard2) statCard2.textContent = 'My Claimed Cases';
+    if (statCard3) statCard3.textContent = 'Available Open Cases';
+
+    updateFilterChipLabels({
+      open: '🔓 Open Cases (Claimable)',
+      mine: '👤 My Cases',
+      all: '📋 All Cases',
+      completed: '✅ Completed'
+    });
+    updateMobileNavLabels('Open Tasks', 'My Cases');
+  } else {
+    // Sales and Doctor do the same job on this screen (enrol patients, watch progress), so they
+    // get the same layout and the same words -- only the page title differs.
+    const isDoctor = currentUserRole === 'clp_doctor';
+    if (bannerTitle) bannerTitle.textContent = isDoctor ? 'Clinical Director Dashboard' : 'Sales Enrolment Portal';
+    if (bannerSub) bannerSub.textContent = isDoctor
+      ? 'Enrol patients by Clinicea ID, follow every home-visit programme, and review session notes.'
+      : 'Search patients by Clinicea ID, set up home visit plans, and monitor physio assignments.';
     if (lookupSection) {
       const mainContent = document.querySelector('.main-content');
       const roleBanner = document.getElementById('role-banner');
-      if (mainContent && roleBanner && mainContent.children[1] !== lookupSection) {
+      if (mainContent && roleBanner && roleBanner.nextElementSibling !== lookupSection) {
         mainContent.insertBefore(lookupSection, roleBanner.nextElementSibling);
       }
     }
@@ -197,37 +217,6 @@ function showApp(userObj, liveMode) {
       completed: '✅ Completed Enrolments'
     });
     updateMobileNavLabels('Pending Physio', 'Active');
-  } else if (currentUserRole === 'external_physio') {
-    if (bannerTitle) bannerTitle.textContent = 'Physio Care Portal';
-    if (bannerSub) bannerSub.textContent = 'Browse open home-visit cases, claim patient assignments, and record session notes.';
-    if (dateBar) dateBar.hidden = true;
-    if (statCard1) statCard1.textContent = 'Total Cases';
-    if (statCard2) statCard2.textContent = 'My Claimed Cases';
-    if (statCard3) statCard3.textContent = 'Available Open Cases';
-
-    updateFilterChipLabels({
-      open: '🔓 Open Cases (Claimable)',
-      mine: '👤 My Cases',
-      all: '📋 All Cases',
-      completed: '✅ Completed'
-    });
-    updateMobileNavLabels('Open Tasks', 'My Cases');
-  } else {
-    // clp_doctor
-    if (bannerTitle) bannerTitle.textContent = 'Clinical Director Dashboard';
-    if (bannerSub) bannerSub.textContent = 'Full clinical oversight across patient plans, physio assignments, and consultations.';
-    if (dateBar) dateBar.hidden = true;
-    if (statCard1) statCard1.textContent = 'Total Cases';
-    if (statCard2) statCard2.textContent = 'Assigned Cases';
-    if (statCard3) statCard3.textContent = 'Unassigned Cases';
-
-    updateFilterChipLabels({
-      open: '🔓 Unassigned Cases',
-      mine: '🩺 Assigned Cases',
-      all: '📋 All Cases',
-      completed: '✅ Completed'
-    });
-    updateMobileNavLabels('Unassigned', 'Assigned');
   }
 
   modeText.textContent = liveMode ? 'LIVE CLINICEA' : 'MOCK DEMO';
