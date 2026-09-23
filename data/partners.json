@@ -1,8 +1,27 @@
 [
   {
+    "username": "sales_user",
+    "password": "demo123",
+    "name": "Sales Team",
+    "role": "sales",
+    "email": "sales@example.com",
+    "phone": "+910000000000",
+    "allowedPatientIds": []
+  },
+  {
+    "username": "dr_ritika",
+    "password": "demo123",
+    "name": "Dr. Ritika",
+    "role": "clp_doctor",
+    "email": "dr.ritika@example.com",
+    "phone": "+910000000099",
+    "allowedPatientIds": []
+  },
+  {
     "username": "physio_jane",
     "password": "demo123",
     "name": "Jane Fernandes",
+    "role": "external_physio",
     "email": "jane.demo@example.com",
     "phone": "+910000000001",
     "allowedPatientIds": []
@@ -11,6 +30,7 @@
     "username": "physio_raj",
     "password": "demo123",
     "name": "Raj Malhotra",
+    "role": "external_physio",
     "email": "raj.demo@example.com",
     "phone": "+910000000002",
     "allowedPatientIds": []
@@ -19,6 +39,7 @@
     "username": "physio_meera",
     "password": "demo123",
     "name": "Meera Nair",
+    "role": "external_physio",
     "email": "meera.demo@example.com",
     "phone": "+910000000003",
     "allowedPatientIds": []

@@ -14,6 +14,7 @@ const { normalizeAppointment } = require('./lib/webhook-normalize');
 // Postgres (Vercel Postgres) when DATABASE_URL is set; local JSON-file store otherwise.
 const store = db.isConfigured() ? require('./lib/store-pg') : require('./lib/store');
 const partners = db.isConfigured() ? require('./lib/partners-pg') : require('./lib/partners');
+const plans = db.isConfigured() ? require('./lib/plans-pg') : require('./lib/plans');
 
 // The "Simulate booking" endpoint exists purely to demo the webhook flow without a real
 // Clinicea connection. Once a real API key is set, real bookings arrive via webhook and
@@ -102,13 +103,28 @@ function isPhysioAppointment(appt) {
   return PHYSIO_FILTER.some((term) => haystack.includes(term));
 }
 
+function requireRole(allowedRoles) {
+  return (req, res, next) => {
+    if (!req.session || !req.session.user) {
+      return res.status(401).json({ error: 'Not logged in' });
+    }
+    const role = req.session.user.role || 'external_physio';
+    if (!allowedRoles.includes(role)) {
+      return res.status(403).json({ error: `Access denied. Only ${allowedRoles.join(', ')} users can perform this action.` });
+    }
+    next();
+  };
+}
+
 function toView(a) {
+  const planInfo = a.PatientID ? plans.getPlan(a.PatientID) : null;
   return {
     id: a.AppointmentID,
     start: a.AppointmentStartDateTime,
     end: a.AppointmentEndDateTime,
     service: a.AppointmentServiceName,
     practitioner: a.AppointmentPractionerName,
+    patientId: a.PatientID,
     patientName: a.PatientName,
     patientMobile: a.PatientMobileNo,
     address: [a.Address1, a.City, a.PCode].filter(Boolean).join(', '),
@@ -116,6 +132,7 @@ function toView(a) {
     notesSyncStatus: a.notesSyncStatus || 'synced',
     source: a.source || 'clinicea',
     assignedTo: a.assignedTo || null,
+    patientPlan: planInfo,
   };
 }
 
@@ -367,6 +384,55 @@ app.put('/api/appointments/:id/notes', requireAuth, async (req, res) => {
   } catch (err) {
     await store.setNotes(req.params.id, notes, 'failed');
     res.status(502).json({ error: `Saved locally, but Clinicea sync failed: ${err.message}`, notesSyncStatus: 'failed' });
+  }
+});
+
+// GET /api/patients/plan/:patientId
+app.get('/api/patients/plan/:patientId', requireAuth, async (req, res) => {
+  const planInfo = await plans.getPlan(req.params.patientId);
+  res.json({ plan: planInfo });
+});
+
+// POST /api/patients/plan/:patientId (Restricted to Sales & CLP Doctor!)
+app.post('/api/patients/plan/:patientId', requireAuth, requireRole(['sales', 'clp_doctor']), async (req, res) => {
+  const { allottedSessions } = req.body || {};
+  try {
+    const updatedPlan = await plans.updateAllotted(req.params.patientId, allottedSessions, req.session.user.username);
+    res.json({ ok: true, plan: updatedPlan });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+// POST /api/appointments/:id/feedback (Structured Physio Feedback & Clinicea Sync)
+app.post('/api/appointments/:id/feedback', requireAuth, async (req, res) => {
+  const { painLevel, mobilityStatus, exercisesCompleted, patientCompliance, clinicalNotes } = req.body || {};
+
+  const all = await store.getAll();
+  const existing = all.find((a) => a.AppointmentID === req.params.id);
+  if (!existing) return res.status(404).json({ error: 'Appointment not found' });
+
+  const feedbackData = {
+    painLevel: painLevel || 'N/A',
+    mobilityStatus: mobilityStatus || 'N/A',
+    exercisesCompleted: exercisesCompleted || 'None specified',
+    patientCompliance: patientCompliance || 'N/A',
+    clinicalNotes: clinicalNotes || '',
+  };
+
+  const { plan: updatedPlan, feedbackEntry } = await plans.recordSessionFeedback(existing.PatientID || 'UNASSIGNED', feedbackData, req.session.user.username);
+
+  const formattedNote = `[PhysioWay Feedback - Session ${feedbackEntry.sessionNumber} of ${feedbackEntry.totalAllotted}] Pain: ${feedbackData.painLevel}/10 | Mobility: ${feedbackData.mobilityStatus} | Compliance: ${feedbackData.patientCompliance} | Exercises: ${feedbackData.exercisesCompleted} | Notes: ${feedbackData.clinicalNotes}`.trim();
+
+  await store.setNotes(req.params.id, formattedNote, 'pending');
+
+  try {
+    await clinicea.updateAppointmentNotes(req.params.id, formattedNote);
+    const updated = await store.setNotes(req.params.id, formattedNote, 'synced');
+    res.json({ ok: true, notesSyncStatus: 'synced', plan: updatedPlan, note: formattedNote });
+  } catch (err) {
+    await store.setNotes(req.params.id, formattedNote, 'failed');
+    res.status(502).json({ error: `Saved locally, but Clinicea sync failed: ${err.message}`, notesSyncStatus: 'failed', plan: updatedPlan, note: formattedNote });
   }
 });
 
