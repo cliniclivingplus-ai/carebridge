@@ -718,7 +718,7 @@ if (allotForm) {
       await loadCases();
       alert(`Patient ${patientName} (${patientId}) enrolled successfully as a Home-Visit Case!`);
     } catch (err) {
-      alert(`Case enrolment failed: ${err.message}`);
+      alert(`Case enrollment failed: ${err.message}`);
     } finally {
       submitBtn.disabled = false;
     }
@@ -750,7 +750,7 @@ if (lookupForm) {
             ${p.bloodGroup ? `<span>🩸 Blood Group: ${p.bloodGroup}</span>` : ''}
           </div>
           ${p.notes ? `<div class="lookup-notes"><strong>Notes:</strong> ${p.notes}</div>` : ''}
-          <button class="pill-btn btn-enroll-now" style="margin-top:10px">Enrol in Home-Visit Case</button>
+          <button class="pill-btn btn-enroll-now" style="margin-top:10px">Enroll in Home-Visit Case</button>
         </div>
       `;
 
@@ -763,7 +763,7 @@ if (lookupForm) {
         allotPatientPcode.value = '';
         allotSymptoms.value = p.symptomsConcern || p.notes || '';
         allotCount.value = 10;
-        document.getElementById('allot-modal-subtitle').textContent = `Enrol ${p.name} (${p.id})`;
+        document.getElementById('allot-modal-subtitle').textContent = `Enroll ${p.name} (${p.id})`;
         allotModal.hidden = false;
       });
     } catch (err) {
@@ -919,12 +919,12 @@ if (lookupForm) {
 
           <div class="lookup-enrolment-strip">
             <div class="enrolment-status ${isEnrolled ? 'status-enrolled' : 'status-not-enrolled'}">
-              <span class="enrolment-title">${isEnrolled ? 'Active Home-Visit Programme' : 'Not Enrolled in Physio Home Visits'}</span>
+              <span class="enrolment-title">${isEnrolled ? 'Active Home Visit Program' : 'Not Enrolled in Physio Home Visits'}</span>
               <span class="enrolment-details">${isEnrolled ? `Completed <strong>${plan.completedSessions}</strong> of <strong>${plan.allottedSessions}</strong> Sessions` : 'Patient needs session plan allotment'}</span>
             </div>
             ${canEditAllotment ? `
               <button type="button" class="btn-lookup-enroll pill-btn" data-patient-id="${p.id || id}" data-name="${p.name || id}" data-allotted="${plan.allottedSessions || 5}" data-physio="${plan.assignedPhysio || ''}" data-notes="${plan.notes || ''}">
-                <span>${isEnrolled ? 'Edit Session Plan & Allotment' : '+ Enrol Patient & Allot Sessions'}</span>
+                <span>${isEnrolled ? 'Edit Session Plan & Allotment' : '+ Enroll Patient & Allot Sessions'}</span>
               </button>
             ` : ''}
           </div>
