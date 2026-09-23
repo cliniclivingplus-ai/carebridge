@@ -612,4 +612,10 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: 'Internal server error' });
 });
 
-module.exports = { app, seedStoreIfEmpty, DEMO_MODE };
+// Vercel's Express detection may load this file directly as the function entry, which requires
+// the default export to be the app itself. The named properties keep `const { app } = require('./app')`
+// working for server.js and api/index.js.
+module.exports = app;
+module.exports.app = app;
+module.exports.seedStoreIfEmpty = seedStoreIfEmpty;
+module.exports.DEMO_MODE = DEMO_MODE;
