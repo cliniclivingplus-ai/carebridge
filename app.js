@@ -100,6 +100,7 @@ function toView(a) {
     notes: a.notes || '',
     notesSyncStatus: a.notesSyncStatus || 'synced',
     source: a.source || 'clinicea',
+    assignedTo: a.assignedTo || null,
   };
 }
 
@@ -141,16 +142,38 @@ app.get('/api/me', (req, res) => {
 });
 
 // ---------- Dashboard data (reads from the store, kept in sync by webhooks) ----------
+// Every physiotherapy appointment is visible to every logged-in partner-team member --
+// the partner company (not this app) decides internally who covers each home visit, via
+// the assignment endpoint below. There is no per-patient access restriction here.
 
 app.get('/api/appointments', requireAuth, async (req, res) => {
   await seedStoreIfEmpty();
   const date = req.query.date || new Date().toISOString().slice(0, 10);
   const dayAppointments = await store.getByDate(date);
-  const visible = dayAppointments
-    .filter(isPhysioAppointment)
-    .filter((a) => partners.canSeePatient(req.session.user, a.PatientID))
-    .map(toView);
+  const visible = dayAppointments.filter(isPhysioAppointment).map(toView);
   res.json({ date, liveMode: clinicea.isLiveMode(), appointments: visible });
+});
+
+// The partner team roster, so the dashboard can offer "assign to ___" options.
+app.get('/api/team', requireAuth, async (req, res) => {
+  const team = await partners.listTeam();
+  res.json({ team });
+});
+
+app.put('/api/appointments/:id/assign', requireAuth, async (req, res) => {
+  const { assignedTo } = req.body || {};
+  if (assignedTo !== null && typeof assignedTo !== 'string') {
+    return res.status(400).json({ error: 'assignedTo must be a username string or null' });
+  }
+  if (assignedTo) {
+    const team = await partners.listTeam();
+    if (!team.some((t) => t.username === assignedTo)) {
+      return res.status(400).json({ error: 'Unknown team member' });
+    }
+  }
+  const updated = await store.setAssignedTo(req.params.id, assignedTo);
+  if (!updated) return res.status(404).json({ error: 'Appointment not found' });
+  res.json({ ok: true, assignedTo: updated.assignedTo || null });
 });
 
 app.put('/api/appointments/:id/notes', requireAuth, async (req, res) => {
@@ -160,9 +183,6 @@ app.put('/api/appointments/:id/notes', requireAuth, async (req, res) => {
   const all = await store.getAll();
   const existing = all.find((a) => a.AppointmentID === req.params.id);
   if (!existing) return res.status(404).json({ error: 'Appointment not found' });
-  if (!partners.canSeePatient(req.session.user, existing.PatientID)) {
-    return res.status(403).json({ error: 'Not authorized for this patient' });
-  }
 
   // Reflect the edit immediately, then push to Clinicea. If the push fails, the dashboard
   // still shows the note but flags it as not-yet-synced rather than losing the edit.
@@ -219,9 +239,16 @@ app.post('/webhooks/clinicea/:secret/appointment/delete', webhookLimiter, requir
 // configured, this route does not exist at all -- not hidden, not disabled, absent --
 // so there's no way to inject fake appointments into a production dataset.
 if (DEMO_MODE) {
+  const DEMO_PATIENTS = [
+    { id: 'pat-501', name: 'Anitha Kumar', mobile: '9876500001', address1: '12 Lake View Road', pcode: '560034' },
+    { id: 'pat-503', name: 'Salma Farooq', mobile: '9876500003', address1: '7 Palm Grove Apartments', pcode: '560068' },
+    { id: 'pat-sim-' + crypto.randomBytes(2).toString('hex'), name: 'New Walk-in Patient', mobile: '9876500099', address1: '221B Residency Road', pcode: '560025' },
+  ];
+
   app.post('/api/dev/simulate-booking', requireAuth, async (req, res) => {
     await seedStoreIfEmpty();
-    const { source, forOwnClient } = req.body || {};
+    const { source } = req.body || {};
+    const patient = DEMO_PATIENTS[Math.floor(Math.random() * DEMO_PATIENTS.length)];
     const id = `apt-sim-${crypto.randomBytes(3).toString('hex')}`;
     const now = new Date();
     const start = new Date(now.getTime() + 60 * 60 * 1000);
@@ -233,12 +260,12 @@ if (DEMO_MODE) {
       AppointmentServiceName: 'Physiotherapy - Home Visit',
       AppointmentServiceCategory: 'Physiotherapy',
       AppointmentPractionerName: source === 'patient' ? 'Unassigned (online booking)' : 'Dr. Rao',
-      PatientID: forOwnClient ? 'pat-501' : `pat-sim-${crypto.randomBytes(2).toString('hex')}`,
-      PatientName: forOwnClient ? 'Anitha Kumar' : source === 'patient' ? 'New Online Patient (different client)' : 'New Walk-in Patient (different client)',
-      PatientMobileNo: forOwnClient ? '9876500001' : '9876500099',
-      Address1: forOwnClient ? '12 Lake View Road' : '221B Residency Road',
+      PatientID: patient.id,
+      PatientName: patient.name,
+      PatientMobileNo: patient.mobile,
+      Address1: patient.address1,
       City: 'Bengaluru',
-      PCode: forOwnClient ? '560034' : '560025',
+      PCode: patient.pcode,
       source: source === 'patient' ? 'patient-online-booking' : 'doctor-booked-in-clinicea',
       notes: '',
     };

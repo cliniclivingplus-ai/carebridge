@@ -2,7 +2,19 @@
   {
     "username": "physio_jane",
     "password": "demo123",
-    "name": "Jane (PhysioCare Partner)",
-    "allowedPatientIds": ["pat-501"]
+    "name": "Jane Fernandes",
+    "allowedPatientIds": []
+  },
+  {
+    "username": "physio_raj",
+    "password": "demo123",
+    "name": "Raj Malhotra",
+    "allowedPatientIds": []
+  },
+  {
+    "username": "physio_meera",
+    "password": "demo123",
+    "name": "Meera Nair",
+    "allowedPatientIds": []
   }
 ]

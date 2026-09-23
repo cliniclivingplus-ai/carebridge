@@ -28,11 +28,19 @@ CREATE TABLE IF NOT EXISTS appointments (
   notes_updated_at TIMESTAMPTZ,
   source TEXT,
   deleted BOOLEAN NOT NULL DEFAULT false,
+  -- Which partner-team member (partners.username) is doing this home visit. Not a hard
+  -- access gate -- any partner account can see and assign/reassign any appointment; this
+  -- is coordination metadata, decided by the partner team itself, not enforced by us.
+  assigned_to TEXT REFERENCES partners (username) ON DELETE SET NULL,
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 CREATE INDEX IF NOT EXISTS idx_appointments_start_date ON appointments ((start_datetime::date));
 CREATE INDEX IF NOT EXISTS idx_appointments_patient ON appointments (patient_id);
+CREATE INDEX IF NOT EXISTS idx_appointments_assigned_to ON appointments (assigned_to);
+
+-- Adds the column for anyone who already ran this schema before assigned_to existed.
+ALTER TABLE appointments ADD COLUMN IF NOT EXISTS assigned_to TEXT REFERENCES partners (username) ON DELETE SET NULL;
 
 -- connect-pg-simple creates its own "session" table automatically on first run,
 -- but declaring it here means db:migrate sets everything up in one step.

@@ -8,11 +8,13 @@ const emptyState = document.getElementById('empty-state');
 const whoEl = document.getElementById('who');
 const modeBadge = document.getElementById('mode-badge');
 const logoutBtn = document.getElementById('logout-btn');
-const simOwnClientBtn = document.getElementById('sim-own-client-btn');
-const simOtherClientBtn = document.getElementById('sim-other-client-btn');
+const simDoctorBtn = document.getElementById('sim-doctor-btn');
+const simPatientBtn = document.getElementById('sim-patient-btn');
 const demoTools = document.getElementById('demo-tools');
 
 let pollTimer = null;
+let currentUser = null;
+let team = []; // [{username, name}]
 
 function todayStr() {
   return new Date().toISOString().slice(0, 10);
@@ -57,6 +59,21 @@ function syncLabel(status) {
   return 'Synced to Clinicea';
 }
 
+function teamMemberName(username) {
+  const member = team.find((t) => t.username === username);
+  return member ? member.name : username;
+}
+
+function assignOptionsHtml(currentAssignee) {
+  const options = ['<option value="">Unassigned</option>'];
+  for (const member of team) {
+    const label = member.username === currentUser ? `${member.name} (me)` : member.name;
+    const selected = member.username === currentAssignee ? 'selected' : '';
+    options.push(`<option value="${member.username}" ${selected}>${label}</option>`);
+  }
+  return options.join('');
+}
+
 function renderAppointments(appointments) {
   const focusedId = document.activeElement && document.activeElement.dataset ? document.activeElement.dataset.id : null;
 
@@ -80,6 +97,11 @@ function renderAppointments(appointments) {
         Address: ${appt.address || '—'}<br/>
         <span class="source-tag">${sourceLabel(appt.source)}</span>
       </div>
+      <div class="assign-row">
+        <label>Assigned to</label>
+        <select data-assign-for="${appt.id}">${assignOptionsHtml(appt.assignedTo)}</select>
+        <span class="assign-status" data-assign-status-for="${appt.id}"></span>
+      </div>
       <div class="appt-notes">
         <label>Session notes</label>
         <textarea data-id="${appt.id}">${appt.notes || ''}</textarea>
@@ -97,6 +119,27 @@ function renderAppointments(appointments) {
     const el = listEl.querySelector(`textarea[data-id="${focusedId}"]`);
     if (el) el.focus();
   }
+
+  listEl.querySelectorAll('select[data-assign-for]').forEach((select) => {
+    select.addEventListener('change', async () => {
+      const id = select.dataset.assignFor;
+      const statusEl = listEl.querySelector(`[data-assign-status-for="${id}"]`);
+      select.disabled = true;
+      statusEl.textContent = 'Saving...';
+      try {
+        await api(`/api/appointments/${encodeURIComponent(id)}/assign`, {
+          method: 'PUT',
+          body: JSON.stringify({ assignedTo: select.value || null }),
+        });
+        statusEl.textContent = 'Saved ✓';
+        setTimeout(() => (statusEl.textContent = ''), 2000);
+      } catch (err) {
+        statusEl.textContent = `Error: ${err.message}`;
+      } finally {
+        select.disabled = false;
+      }
+    });
+  });
 
   listEl.querySelectorAll('.save-btn').forEach((btn) => {
     btn.addEventListener('click', async () => {
@@ -128,6 +171,11 @@ function renderAppointments(appointments) {
   });
 }
 
+async function loadTeam() {
+  const data = await api('/api/team');
+  team = data.team;
+}
+
 async function loadAppointments() {
   const date = datePicker.value || todayStr();
   const data = await api(`/api/appointments?date=${date}`);
@@ -144,21 +192,13 @@ function startPolling() {
   }, 4000);
 }
 
-async function simulateBooking(forOwnClient, btn) {
+async function simulateBooking(source, btn) {
   btn.disabled = true;
   const original = btn.textContent;
   btn.textContent = 'Sending webhook to dashboard...';
   try {
-    const result = await api('/api/dev/simulate-booking', {
-      method: 'POST',
-      body: JSON.stringify({ source: 'doctor', forOwnClient }),
-    });
+    await api('/api/dev/simulate-booking', { method: 'POST', body: JSON.stringify({ source }) });
     await loadAppointments();
-    if (!forOwnClient) {
-      alert(
-        `Booking created in Clinicea for "${result.appointment.patientName}" — but since that's not your assigned client, it will NOT show up in your list. Check below to confirm.`
-      );
-    }
   } catch (err) {
     alert(err.message);
   } finally {
@@ -167,8 +207,8 @@ async function simulateBooking(forOwnClient, btn) {
   }
 }
 
-simOwnClientBtn.addEventListener('click', () => simulateBooking(true, simOwnClientBtn));
-simOtherClientBtn.addEventListener('click', () => simulateBooking(false, simOtherClientBtn));
+simDoctorBtn.addEventListener('click', () => simulateBooking('doctor', simDoctorBtn));
+simPatientBtn.addEventListener('click', () => simulateBooking('patient', simPatientBtn));
 
 loginForm.addEventListener('submit', async (e) => {
   e.preventDefault();
@@ -177,8 +217,10 @@ loginForm.addEventListener('submit', async (e) => {
   const password = document.getElementById('password').value;
   try {
     const data = await api('/api/login', { method: 'POST', body: JSON.stringify({ username, password }) });
+    currentUser = data.username;
     datePicker.value = todayStr();
     showApp(data.username, false);
+    await loadTeam();
     await loadAppointments();
     startPolling();
   } catch (err) {
@@ -199,7 +241,9 @@ datePicker.addEventListener('change', () => {
   datePicker.value = todayStr();
   const me = await api('/api/me');
   if (me.user) {
+    currentUser = me.user.username;
     showApp(me.user.username, me.liveMode);
+    await loadTeam();
     await loadAppointments();
     startPolling();
   } else {
