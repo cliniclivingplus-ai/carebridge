@@ -612,66 +612,22 @@ function startPolling() {
   pollTimer = setInterval(() => {
     loadCases().catch(() => {});
   }, 10000);
-}0);
 }
 
-async function simulateBooking(source, btn) {
-  btn.disabled = true;
-  try {
-    await api('/api/dev/simulate-booking', { method: 'POST', body: JSON.stringify({ source }) });
-    await loadAppointments();
-  } catch (err) {
-    alert(err.message);
-  } finally {
-    btn.disabled = false;
-  }
-}
-
-// Event Listeners setup
-prevDateBtn.addEventListener('click', () => adjustDate(-1));
-nextDateBtn.addEventListener('click', () => adjustDate(1));
-todayBtn.addEventListener('click', () => {
-  datePicker.value = todayStr();
-  dateDisplayStr.textContent = 'Today';
-  loadAppointments().catch(() => {});
-});
-
-datePicker.addEventListener('change', () => {
-  dateDisplayStr.textContent = formatDateDisplay(datePicker.value);
-  loadAppointments().catch((err) => alert(err.message));
-});
-
-const scanNowBtn = document.getElementById('scan-now-btn');
-const scanStatus = document.getElementById('scan-status');
-if (scanNowBtn) {
-  scanNowBtn.addEventListener('click', async () => {
-    scanNowBtn.disabled = true;
-    scanStatus.hidden = false;
-    scanStatus.textContent = 'Checking Clinicea for new bookings on any date...';
-    try {
-      const result = await api('/api/scan-now', { method: 'POST' });
-      scanStatus.textContent = `Checked ${result.checked} change(s), notified team about ${result.notified} new booking(s).`;
-      await loadAppointments();
-    } catch (err) {
-      scanStatus.textContent = `Error: ${err.message}`;
-    } finally {
-      scanNowBtn.disabled = false;
-      setTimeout(() => (scanStatus.hidden = true), 6000);
-    }
+// Search & Filter event listeners
+if (searchInput) {
+  searchInput.addEventListener('input', (e) => {
+    activeQuery = e.target.value;
+    loadCases().catch(() => {});
   });
 }
-
-searchInput.addEventListener('input', (e) => {
-  activeQuery = e.target.value;
-  filterAppointments();
-});
 
 filterChips.forEach((chip) => {
   chip.addEventListener('click', () => {
     filterChips.forEach((c) => c.classList.remove('active'));
     chip.classList.add('active');
-    activeFilter = chip.dataset.filter;
-    filterAppointments();
+    activeFilter = chip.dataset.filter || 'all';
+    loadCases().catch(() => {});
   });
 });
 
@@ -679,17 +635,22 @@ mobNavItems.forEach((item) => {
   item.addEventListener('click', () => {
     mobNavItems.forEach((i) => i.classList.remove('active'));
     item.classList.add('active');
-    if (item.id === 'mob-nav-all') {
-      activeFilter = 'all';
-      filterChips.forEach((c) => c.classList.toggle('active', c.dataset.filter === 'all'));
-      filterAppointments();
-    } else if (item.id === 'mob-nav-mine') {
-      activeFilter = 'mine';
-      filterChips.forEach((c) => c.classList.toggle('active', c.dataset.filter === 'mine'));
-      filterAppointments();
-    } else if (item.id === 'mob-nav-refresh') {
-      loadAppointments().catch(() => {});
-    }
+    activeFilter = item.dataset.filter || 'all';
+    filterChips.forEach((c) => c.classList.toggle('active', c.dataset.filter === activeFilter));
+    loadCases().catch(() => {});
+  });
+});
+
+// Quick Demo Roles Pills (1-click autofill & login)
+document.querySelectorAll('.btn-demo-login').forEach((btn) => {
+  btn.addEventListener('click', async () => {
+    const u = btn.dataset.user;
+    const p = btn.dataset.pass;
+    const usernameInput = document.getElementById('username');
+    const passwordInput = document.getElementById('password');
+    if (usernameInput) usernameInput.value = u;
+    if (passwordInput) passwordInput.value = p;
+    if (loginForm) loginForm.dispatchEvent(new Event('submit'));
   });
 });
 
