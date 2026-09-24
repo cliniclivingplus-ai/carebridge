@@ -17,6 +17,7 @@ const store = db.isConfigured() ? require('./lib/store-pg') : require('./lib/sto
 const partners = db.isConfigured() ? require('./lib/partners-pg') : require('./lib/partners');
 const plans = db.isConfigured() ? require('./lib/plans-pg') : require('./lib/plans');
 const cases = db.isConfigured() ? require('./lib/cases-pg') : require('./lib/cases');
+const visits = db.isConfigured() ? require('./lib/visits-pg') : require('./lib/visits');
 const feedbackQuestions = require('./lib/feedback-questions.json');
 const { validateFeedback } = require('./lib/feedback-validate');
 
@@ -491,18 +492,12 @@ app.put('/api/appointments/:id/notes', requireAuth, requireRole(CLINIC_STAFF), a
   const existing = all.find((a) => a.AppointmentID === req.params.id);
   if (!existing) return res.status(404).json({ error: 'Appointment not found' });
 
-  // Reflect the edit immediately, then push to Clinicea. If the push fails, the dashboard
-  // still shows the note but flags it as not-yet-synced rather than losing the edit.
-  await store.setNotes(req.params.id, notes, 'pending');
-  try {
-    await clinicea.updateAppointmentNotes(req.params.id, notes);
-    const updated = await store.setNotes(req.params.id, notes, 'synced');
-    if (!updated) return res.status(404).json({ error: 'Appointment not found' });
-    res.json({ ok: true, notesSyncStatus: 'synced' });
-  } catch (err) {
-    await store.setNotes(req.params.id, notes, 'failed');
-    res.json({ ok: true, notesSyncStatus: 'failed', warning: `Saved in CareBridge. Clinicea API sync failed: ${err.message}` });
-  }
+  // Appointment notes stay in CareBridge. Nothing is written to the Clinicea appointment: its
+  // update call also requires start/end/clinician/status and can overwrite them. Only completed
+  // session feedback goes to Clinicea, as an EMR encounter (lib/session-sync.js).
+  const updated = await store.setNotes(req.params.id, notes, 'local');
+  if (!updated) return res.status(404).json({ error: 'Appointment not found' });
+  res.json({ ok: true, notesSyncStatus: 'local' });
 });
 
 // GET /api/patients/plan/:patientId
@@ -558,16 +553,9 @@ app.post('/api/appointments/:id/feedback', requireAuth, requireRole(CLINIC_STAFF
 
   const formattedNote = `[PhysioWay Feedback - Session ${feedbackEntry.sessionNumber} of ${feedbackEntry.totalAllotted}] Pain: ${feedbackData.painLevel}/10 | Mobility: ${feedbackData.mobilityStatus} | Compliance: ${feedbackData.patientCompliance} | Exercises: ${feedbackData.exercisesCompleted} | Notes: ${feedbackData.clinicalNotes}`.trim();
 
-  await store.setNotes(req.params.id, formattedNote, 'pending');
-
-  try {
-    await clinicea.updateAppointmentNotes(req.params.id, formattedNote);
-    const updated = await store.setNotes(req.params.id, formattedNote, 'synced');
-    res.json({ ok: true, notesSyncStatus: 'synced', plan: updatedPlan, note: formattedNote });
-  } catch (err) {
-    await store.setNotes(req.params.id, formattedNote, 'failed');
-    res.json({ ok: true, notesSyncStatus: 'failed', warning: `Saved in CareBridge. Clinicea API sync failed: ${err.message}`, plan: updatedPlan, note: formattedNote });
-  }
+  // Saved in CareBridge only (see the notes route above for why nothing is sent to Clinicea).
+  await store.setNotes(req.params.id, formattedNote, 'local');
+  res.json({ ok: true, notesSyncStatus: 'local', plan: updatedPlan, note: formattedNote });
 });
 
 // ---------- Home-Visit Cases & Sessions API Endpoints ----------
@@ -609,7 +597,21 @@ app.post('/api/cases', requireAuth, requireRole(['sales', 'clp_doctor']), async 
       createdBy: req.session.user.username,
       instructions,
     });
-    res.json({ ok: true, case: newCase });
+    const { startDate, startTime, pattern } = req.body || {};
+    const createdVisits = await visits.createVisitSchedule({
+      caseId: newCase.id,
+      patientId: newCase.patientId,
+      patientName: newCase.patientName,
+      patientMobile: newCase.patientMobile,
+      address: newCase.address,
+      allottedSessions: newCase.allottedSessions,
+      startDate: startDate || new Date().toISOString().split('T')[0],
+      startTime: startTime || '10:00',
+      pattern: pattern || 'MWF',
+      assignedPhysio: newCase.assignedPhysio,
+      createdBy: req.session.user.username,
+    });
+    res.json({ ok: true, case: newCase, visits: createdVisits });
   } catch (err) {
     res.status(400).json({ error: err.message });
   }
@@ -645,6 +647,7 @@ app.get('/api/cases/:id', requireAuth, async (req, res) => {
 app.post('/api/cases/:id/claim', requireAuth, requireRole(['external_physio', 'clp_doctor']), async (req, res) => {
   try {
     const updatedCase = await cases.claimCase(req.params.id, req.session.user.username);
+    await visits.assignVisitsToPhysio(req.params.id, req.session.user.username);
     res.json({ ok: true, case: caseForViewer(req.session.user, updatedCase) });
   } catch (err) {
     const status = err.message === 'Case not found' ? 404 : 409;
@@ -676,7 +679,72 @@ app.put('/api/cases/:id/assign', requireAuth, async (req, res) => {
       }
     }
     const updatedCase = await cases.assignCase(req.params.id, assignedPhysio || null);
+    await visits.assignVisitsToPhysio(req.params.id, assignedPhysio || null);
     res.json({ ok: true, case: caseForViewer(req.session.user, updatedCase) });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+// ---------- Phase 2a: Visits & Lifecycle Endpoints ----------
+
+// GET /api/visits/today (Physio's time-sorted schedule for specified date or today)
+app.get('/api/visits/today', requireAuth, async (req, res) => {
+  const { date } = req.query || {};
+  const isPhysio = req.session.user.role === 'external_physio';
+  const physioFilter = isPhysio ? req.session.user.username : null;
+  try {
+    const list = await visits.listVisitsForPhysio(physioFilter, date);
+    res.json({ ok: true, visits: list, date: date || new Date().toISOString().split('T')[0] });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/cases/:id/visits (All visits belonging to a case)
+app.get('/api/cases/:id/visits', requireAuth, async (req, res) => {
+  try {
+    const list = await visits.listVisitsForCase(req.params.id);
+    res.json({ ok: true, visits: list });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/visits/:id/step (Advance 8-Step Visit Lifecycle)
+app.post('/api/visits/:id/step', requireAuth, async (req, res) => {
+  const { step, coords, reason } = req.body || {};
+  const validSteps = ['confirmed', 'on_the_way', 'arrived', 'in_session', 'completed', 'cancelled', 'no_show'];
+  if (!step || !validSteps.includes(step)) {
+    return res.status(400).json({ error: `Invalid step. Allowed steps: ${validSteps.join(', ')}` });
+  }
+  try {
+    const updated = await visits.updateVisitStep(req.params.id, {
+      step,
+      username: req.session.user.username,
+      coords,
+      reason,
+    });
+    res.json({ ok: true, visit: updated });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+// POST /api/visits/:id/reschedule-request (Submit Reschedule Request)
+app.post('/api/visits/:id/reschedule-request', requireAuth, async (req, res) => {
+  const { newDate, newTime, reason } = req.body || {};
+  if (!newDate || !newTime || !reason) {
+    return res.status(400).json({ error: 'Please provide newDate, newTime, and a reason for rescheduling' });
+  }
+  try {
+    const updated = await visits.requestReschedule(req.params.id, {
+      newDate,
+      newTime,
+      reason,
+      username: req.session.user.username,
+    });
+    res.json({ ok: true, visit: updated });
   } catch (err) {
     res.status(400).json({ error: err.message });
   }

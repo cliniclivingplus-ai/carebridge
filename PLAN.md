@@ -41,12 +41,11 @@ appointments for this one client."
 | Purpose | Endpoint |
 |---|---|
 | Pull appointments for a date (seed/fallback) | `GET /api/v3/appointments/getAppointmentsByDate` |
-| Push a physio's session note back to Clinicea | `PUT /api/v3/appointments/updateAppointment` (`notes` field) |
+| Push a completed session's full feedback to the patient's EMR (only when `CLINICEA_ENCOUNTER_SYNC=true`) | `POST /api/v3/patientVisits/createEncounterFull` |
 
-Other endpoints noted during research but not used here: `createOnlineAppointmentv2`
-(online booking widget itself), `patientVisits/createEncounterFull` (full clinical
-encounter notes, a heavier alternative to the simple appointment `notes` field if the
-partner ever needs structured clinical documentation instead of a free-text note).
+Deliberately not used: `appointments/updateAppointment`. It requires the appointment's start,
+end, clinician and status on every call and can overwrite them; only session feedback is
+synced to Clinicea. `createOnlineAppointmentv2` (the online booking widget) is Clinicea's own flow.
 
 ### Webhooks (push instead of poll)
 Configured at: Clinicea → Tools → Organization → Integrations → Webhooks
@@ -91,12 +90,12 @@ visible to an external party.
 3. From here on, identical to the doctor-booked path (step 2 onward above) — same webhook,
    same code path. No separate logic needed for "who booked it."
 
-### Physio writes a note
-1. Physio opens the dashboard, sees their scoped appointment list, writes a note, clicks Save
-2. Saved to the local store immediately (optimistic), status = `pending`
-3. App calls Clinicea's `updateAppointment` to push the note
-4. On success: status flips to `synced`. On failure: status flips to `failed`, note is kept
-   locally (not lost), visible in the UI as needing a retry.
+### Physio submits session feedback
+1. Physio completes the session questionnaire on the case and submits it
+2. The whole session (before-assessment, after-summary, clinical notes) is saved in CareBridge
+3. `lib/session-sync.js` formats it as one note and sends it to the patient's EMR via `createEncounterFull`
+4. Status: `synced` / `failed` (retryable) / `pending` (sync switched off or no Clinicea patient ID).
+   The Clinicea appointment itself is never modified: no `updateAppointment` calls.
 
 ## 4. Access control model
 
@@ -202,9 +201,8 @@ at startup, since there is no single "startup" on Vercel.
 
 ## 8. Open decisions / things to revisit
 
-- **Notes granularity**: currently using the simple `notes` field on `updateAppointment`.
-  If the partner needs structured clinical documentation instead of free text, switch to
-  `patientVisits/createEncounterFull` — bigger change, not yet built.
+- **EMR encounter sync**: built but off by default and never verified against the live API.
+  Test it on a dedicated test patient before setting `CLINICEA_ENCOUNTER_SYNC=true`.
 - **Multiple physios per partner company**: already supported (one `partners` row per
   person, each with their own `allowedPatientIds`) — just needs real accounts seeded.
 - **Password reset / account management UI**: currently only via `db:seed-partner` script

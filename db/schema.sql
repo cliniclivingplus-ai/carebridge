@@ -133,3 +133,31 @@ CREATE INDEX IF NOT EXISTS idx_sessions_status ON sessions (status);
 ALTER TABLE cases ADD COLUMN IF NOT EXISTS clinicea_patient_id TEXT NOT NULL DEFAULT '';
 -- Why a session's Clinicea sync is pending/failed, so the reason is visible rather than guessed.
 ALTER TABLE sessions ADD COLUMN IF NOT EXISTS clinicea_sync_error TEXT;
+
+-- Home-Visit Appointments / Individual Visits (Phase 2a)
+CREATE TABLE IF NOT EXISTS visits (
+  id TEXT PRIMARY KEY,
+  case_id TEXT NOT NULL REFERENCES cases (id) ON DELETE CASCADE,
+  patient_id TEXT NOT NULL,
+  patient_name TEXT NOT NULL,
+  patient_mobile TEXT DEFAULT '',
+  address TEXT DEFAULT '',
+  visit_number INT NOT NULL,
+  scheduled_date DATE NOT NULL,
+  scheduled_time TEXT NOT NULL DEFAULT '10:00',
+  duration_minutes INT DEFAULT 45,
+  assigned_physio TEXT REFERENCES partners (username) ON DELETE SET NULL,
+  status TEXT NOT NULL DEFAULT 'scheduled',
+  status_history JSONB DEFAULT '[]'::jsonb,
+  cancellation_reason TEXT,
+  reschedule_reason TEXT,
+  reschedule_request JSONB,
+  clinicea_appointment_id TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_visits_case_id ON visits (case_id);
+CREATE INDEX IF NOT EXISTS idx_visits_assigned_physio ON visits (assigned_physio);
+CREATE INDEX IF NOT EXISTS idx_visits_scheduled_date ON visits (scheduled_date);
+

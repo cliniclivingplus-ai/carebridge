@@ -890,6 +890,9 @@ if (allotForm) {
     const symptomsConcern = allotSymptoms.value.trim();
     const allottedSessions = parseInt(allotCount.value, 10) || 10;
     const instructions = document.getElementById('allot-notes')?.value.trim() || '';
+    const startDate = document.getElementById('allot-start-date')?.value || new Date().toISOString().split('T')[0];
+    const startTime = document.getElementById('allot-start-time')?.value || '10:00';
+    const pattern = document.getElementById('allot-pattern')?.value || 'MWF';
 
     const submitBtn = allotForm.querySelector('button[type="submit"]');
     submitBtn.disabled = true;
@@ -907,12 +910,15 @@ if (allotForm) {
           symptomsConcern,
           allottedSessions,
           instructions,
+          startDate,
+          startTime,
+          pattern,
         }),
       });
 
       allotModal.hidden = true;
       await loadCases();
-      alert(`Patient ${patientName} (${patientId}) enrolled successfully as a Home-Visit Case!`);
+      alert(`Patient ${patientName} (${patientId}) enrolled successfully as a Home-Visit Case with a ${allottedSessions}-visit ${pattern} schedule!`);
     } catch (err) {
       alert(`Case enrollment failed: ${err.message}`);
     } finally {
@@ -997,6 +1003,165 @@ async function loadCases() {
   rawCases = data.cases;
   updateStats(all.cases);
   renderCasesList(rawCases);
+  await loadTodayVisits();
+}
+
+async function loadTodayVisits() {
+  const container = document.getElementById('today-visits-list');
+  if (!container) return;
+  try {
+    const data = await api('/api/visits/today');
+    renderTodayVisits(data.visits || []);
+  } catch (err) {
+    container.innerHTML = `<p class="error" style="margin:0">Failed to load today's schedule: ${escapeHtml(err.message)}</p>`;
+  }
+}
+
+function visitStepBadge(status) {
+  const stepMap = {
+    scheduled: { label: 'Scheduled', class: 'status-open' },
+    confirmed: { label: 'Confirmed', class: 'status-open' },
+    on_the_way: { label: 'On My Way', class: 'status-in_progress' },
+    arrived: { label: 'Checked In (Arrived)', class: 'status-in_progress' },
+    in_session: { label: 'Session Started', class: 'status-in_progress' },
+    completed: { label: 'Completed', class: 'status-completed' },
+    cancelled: { label: 'Cancelled', class: 'status-failed' },
+    no_show: { label: 'No Show / Away', class: 'status-failed' },
+    reschedule_requested: { label: 'Reschedule Requested', class: 'status-pending' },
+  };
+  const info = stepMap[status] || { label: status, class: 'status-open' };
+  return `<span class="status-pill ${info.class}">${escapeHtml(info.label)}</span>`;
+}
+
+function nextActionForStep(v) {
+  const status = v.status || 'scheduled';
+  if (status === 'scheduled') {
+    return `<button type="button" class="pill-btn btn-visit-action" data-visit-id="${v.id}" data-next-step="confirmed">Confirm Visit</button>`;
+  }
+  if (status === 'confirmed') {
+    return `<button type="button" class="pill-btn btn-visit-action" data-visit-id="${v.id}" data-next-step="on_the_way">On My Way</button>`;
+  }
+  if (status === 'on_the_way') {
+    return `<button type="button" class="pill-btn btn-visit-action" data-visit-id="${v.id}" data-next-step="arrived">Check In (Arrived at Patient Home)</button>`;
+  }
+  if (status === 'arrived') {
+    return `<button type="button" class="pill-btn btn-visit-action" data-visit-id="${v.id}" data-next-step="in_session">Start Session</button>`;
+  }
+  if (status === 'in_session') {
+    return `<button type="button" class="pill-btn btn-visit-action" data-visit-id="${v.id}" data-next-step="completed" data-case-id="${v.caseId}">Complete Session &amp; Fill Notes</button>`;
+  }
+  return '';
+}
+
+function renderTodayVisits(visitsList) {
+  const container = document.getElementById('today-visits-list');
+  if (!container) return;
+
+  if (visitsList.length === 0) {
+    container.innerHTML = `
+      <div style="padding: 12px 0; color: #64748b;">
+        <p style="margin: 0; font-size: 0.9rem;">No home visits scheduled for today.</p>
+      </div>`;
+    return;
+  }
+
+  container.innerHTML = visitsList.map((v) => {
+    const isMine = v.assignedPhysio === currentUser;
+    const phoneCall = v.patientMobile ? `href="tel:${escapeHtml(v.patientMobile)}"` : '';
+    const mapQuery = encodeURIComponent(`${v.address || ''} ${v.patientName || ''}`);
+    const mapUrl = `https://maps.google.com/?q=${mapQuery}`;
+    const overlapNotice = v.overlapWarning ? `<div style="color: #c2410c; font-size: 0.8rem; font-weight: 600; margin-top: 4px;">Schedule overlap warning: visits scheduled within 45 mins</div>` : '';
+
+    return `
+      <div class="today-visit-card ${isMine ? 'is-mine' : ''}" style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 14px 16px; margin-bottom: 10px;">
+        <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8px;">
+          <div>
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <span style="background: #f1f5f9; padding: 4px 10px; border-radius: 999px; font-weight: 700; font-size: 0.85rem; color: #0f172a;">${escapeHtml(v.scheduledTime || '10:00')}</span>
+              <strong style="font-size: 1rem; color: #0f172a;">${escapeHtml(v.patientName)}</strong>
+              <span style="font-size: 0.8rem; color: #64748b;">(Visit ${v.visitNumber})</span>
+            </div>
+            ${overlapNotice}
+          </div>
+          ${visitStepBadge(v.status)}
+        </div>
+
+        <div style="font-size: 0.88rem; color: #475569; margin-bottom: 12px; display: flex; flex-wrap: wrap; gap: 14px;">
+          <span>📍 ${escapeHtml(v.address || 'No address provided')}</span>
+          <span>👤 ${v.assignedPhysio ? escapeHtml(teamMemberName(v.assignedPhysio)) : 'Unassigned'}</span>
+        </div>
+
+        <div style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center;">
+          ${v.patientMobile ? `<a ${phoneCall} class="pill-btn" style="text-decoration: none; padding: 6px 12px; font-size: 0.82rem;">Call</a>` : ''}
+          <a href="${mapUrl}" target="_blank" rel="noopener" class="pill-btn" style="text-decoration: none; padding: 6px 12px; font-size: 0.82rem;">Map</a>
+          ${nextActionForStep(v)}
+          ${v.status !== 'completed' && v.status !== 'cancelled' ? `<button type="button" class="btn-secondary btn-reschedule-trigger" data-visit-id="${v.id}" style="padding: 6px 12px; font-size: 0.82rem;">Reschedule</button>` : ''}
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  container.querySelectorAll('.btn-visit-action').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const visitId = btn.dataset.visitId;
+      const nextStep = btn.dataset.nextStep;
+      const caseId = btn.dataset.caseId;
+
+      btn.disabled = true;
+      try {
+        let coords = null;
+        if (nextStep === 'arrived' && navigator.geolocation) {
+          coords = await new Promise((resolve) => {
+            navigator.geolocation.getCurrentPosition(
+              (pos) => resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
+              () => resolve(null),
+              { timeout: 5000 }
+            );
+          });
+        }
+        await api(`/api/visits/${visitId}/step`, {
+          method: 'POST',
+          body: JSON.stringify({ step: nextStep, coords }),
+        });
+
+        if (nextStep === 'completed' && caseId) {
+          fbCaseId.value = caseId;
+          renderFeedbackForm();
+          if (feedbackModal) feedbackModal.hidden = false;
+        }
+
+        await loadTodayVisits();
+        await loadCases();
+      } catch (err) {
+        alert(err.message || 'Failed to update visit status');
+      } finally {
+        btn.disabled = false;
+      }
+    });
+  });
+
+  container.querySelectorAll('.btn-reschedule-trigger').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const visitId = btn.dataset.visitId;
+      const newDate = prompt('Enter new date (YYYY-MM-DD):', new Date().toISOString().split('T')[0]);
+      if (!newDate) return;
+      const newTime = prompt('Enter new time (HH:MM):', '10:00');
+      if (!newTime) return;
+      const reason = prompt('Reason for reschedule request:');
+      if (!reason) return;
+
+      try {
+        await api(`/api/visits/${visitId}/reschedule-request`, {
+          method: 'POST',
+          body: JSON.stringify({ newDate, newTime, reason }),
+        });
+        alert('Reschedule request submitted successfully.');
+        await loadTodayVisits();
+      } catch (err) {
+        alert(err.message || 'Failed to submit reschedule request');
+      }
+    });
+  });
 }
 
 function startPolling() {
