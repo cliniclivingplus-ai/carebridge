@@ -163,3 +163,5 @@ CREATE INDEX IF NOT EXISTS idx_visits_scheduled_date ON visits (scheduled_date);
 
 -- ID of the PDF session report attached to the patient's documents in Clinicea.
 ALTER TABLE sessions ADD COLUMN IF NOT EXISTS clinicea_document_id TEXT;
+-- The home visit a session's notes belong to (for the visit timeline in the Clinicea report).
+ALTER TABLE sessions ADD COLUMN IF NOT EXISTS visit_id TEXT;

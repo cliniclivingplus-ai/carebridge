@@ -816,15 +816,19 @@ app.post('/api/cases/:id/feedback', requireAuth, requireRole(['external_physio',
     if (user.role !== 'clp_doctor' && existing.assignedPhysio !== user.username) {
       return res.status(403).json({ error: 'Only the physio assigned to this case can record its sessions' });
     }
+    // Link the notes to their visit before saving, so the report sent to Clinicea can include
+    // the visit's timeline (on the way, arrived, started, finished, check-in location).
+    const requestedVisit = typeof req.body.visitId === 'string' ? req.body.visitId : null;
+    const visit = await visits.findVisitForNotes(req.params.id, requestedVisit, user);
     const result = await cases.recordSessionFeedback(req.params.id, {
       beforeAssessment: feedback.beforeAssessment,
       afterSummary: feedback.afterSummary,
       clinicalNotes: feedback.clinicalNotes,
       sessionDate: feedback.sessionDateTime,
       physioUsername: req.session.user.username,
+      visitId: visit ? visit.id : null,
     });
-    const visitId = typeof req.body.visitId === 'string' ? req.body.visitId : null;
-    const closedVisit = await visits.markNotesSubmitted(req.params.id, visitId, result.session.id, user);
+    const closedVisit = visit ? await visits.markNotesSubmitted(req.params.id, visit.id, result.session.id, user) : null;
     res.json({ ok: true, ...result, visit: closedVisit, case: caseForViewer(req.session.user, result.case) });
   } catch (err) {
     res.status(400).json({ error: err.message });
