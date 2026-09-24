@@ -283,8 +283,16 @@
       </div>
 
       <form id="allot-form">
-        <input type="hidden" id="allot-patient-id" />
-        <input type="hidden" id="allot-patient-name" />
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 16px;">
+          <div class="input-group" style="margin-bottom:0">
+            <label for="allot-patient-id">Clinicea Patient ID</label>
+            <input type="text" id="allot-patient-id" placeholder="e.g. CLP88" required />
+          </div>
+          <div class="input-group" style="margin-bottom:0">
+            <label for="allot-patient-name">Patient Name</label>
+            <input type="text" id="allot-patient-name" placeholder="Patient Full Name" required />
+          </div>
+        </div>
         <input type="hidden" id="allot-patient-mobile" />
         <input type="hidden" id="allot-patient-address" />
         <input type="hidden" id="allot-patient-city" />
