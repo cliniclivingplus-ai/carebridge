@@ -704,9 +704,11 @@ function attachCardEvents() {
       // Populate Physio select options
       const physioSelect = document.getElementById('edit-allotment-physio');
       if (physioSelect) {
+        // Only physios and doctors can be given a case (the server enforces the same).
         physioSelect.innerHTML = '<option value="">-- Open Task (Unassigned Pool) --</option>' +
-          teamMembers
-            .map((m) => `<option value="${escapeHtml(m.username)}" ${m.username === physio ? 'selected' : ''}>${escapeHtml(m.name)} (${m.role})</option>`)
+          team
+            .filter((m) => m.role === 'external_physio' || m.role === 'clp_doctor')
+            .map((m) => `<option value="${escapeHtml(m.username)}" ${m.username === physio ? 'selected' : ''}>${escapeHtml(m.name)} (${escapeHtml(roleLabel(m.role))})</option>`)
             .join('');
       }
 

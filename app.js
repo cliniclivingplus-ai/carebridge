@@ -633,7 +633,13 @@ app.get('/api/cases', requireAuth, async (req, res) => {
       physio: req.session.user.username,
       query: query || '',
     });
-    const summaries = await visits.summariesForCases(caseList.map((c) => c.id));
+    let summaries = await visits.summariesForCases(caseList.map((c) => c.id));
+    const needsRepair = caseList.filter((c) => (c.completedSessions || 0) > ((summaries.get(c.id) || {}).done || 0));
+    if (needsRepair.length) {
+      let repaired = false;
+      for (const c of needsRepair) repaired = (await visits.reconcileCase(c)) || repaired;
+      if (repaired) summaries = await visits.summariesForCases(caseList.map((c) => c.id));
+    }
     res.json({
       ok: true,
       today: visits.todayIST(),
