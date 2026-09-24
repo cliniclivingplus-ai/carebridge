@@ -672,6 +672,21 @@ const handleCaseAllotmentUpdate = async (req, res) => {
 app.post('/api/cases/:id/allotment', requireAuth, requireRole(['sales', 'clp_doctor']), handleCaseAllotmentUpdate);
 app.patch('/api/cases/:id/allotment', requireAuth, requireRole(['sales', 'clp_doctor']), handleCaseAllotmentUpdate);
 
+// DELETE /api/cases/:id -- Sales/Doctor remove a case (e.g. test data) with its visits and sessions.
+// CareBridge only: reports already attached in Clinicea stay there.
+app.delete('/api/cases/:id', requireAuth, requireRole(CLINIC_STAFF), async (req, res) => {
+  try {
+    const existing = await cases.getCase(req.params.id);
+    if (!existing) return res.status(404).json({ error: 'Case not found' });
+    await visits.deleteForCase(req.params.id);
+    await cases.deleteCase(req.params.id);
+    console.log(`[case-delete] user=${req.session.user.username} case=${req.params.id} patient=${existing.patientId}`);
+    res.json({ ok: true });
+  } catch (err) {
+    sendError(res, err, 500);
+  }
+});
+
 // GET /api/cases/:id (Get case details and session history)
 app.get('/api/cases/:id', requireAuth, async (req, res) => {
   try {
