@@ -161,3 +161,5 @@ CREATE INDEX IF NOT EXISTS idx_visits_case_id ON visits (case_id);
 CREATE INDEX IF NOT EXISTS idx_visits_assigned_physio ON visits (assigned_physio);
 CREATE INDEX IF NOT EXISTS idx_visits_scheduled_date ON visits (scheduled_date);
 
+-- ID of the PDF session report attached to the patient's documents in Clinicea.
+ALTER TABLE sessions ADD COLUMN IF NOT EXISTS clinicea_document_id TEXT;

@@ -374,7 +374,7 @@ function formatAnswer(key, value) {
 }
 
 const SYNC_LABELS = {
-  synced: 'Synced to Clinicea',
+  synced: 'Report attached in Clinicea',
   pending: 'Not yet sent to Clinicea',
   failed: 'Clinicea sync failed',
   simulated: 'Demo mode, not sent',
@@ -411,6 +411,9 @@ function sessionDetailHtml(s, allotted) {
         <span>${escapeHtml(s.physioUsername ? teamMemberName(s.physioUsername) : 'Physio')} - ${escapeHtml(when)}</span>
       </div>
       <div class="session-sync sync-${escapeHtml(sync)}">${escapeHtml(SYNC_LABELS[sync] || sync)}${s.cliniceaSyncError && sync !== 'synced' ? ` <small>(${escapeHtml(s.cliniceaSyncError)})</small>` : ''}</div>
+      ${['pending', 'failed'].includes(sync) && (currentUserRole !== 'external_physio' || s.physioUsername === currentUser)
+        ? `<button type="button" class="btn-secondary session-send-btn" data-sync-session="${escapeHtml(s.id)}">Send to Clinicea</button>`
+        : ''}
       ${before ? `<div class="session-group"><div class="session-group-title">${escapeHtml(sectionTitle('beforeAssessment', 'Session details'))}</div>${before}</div>` : ''}
       ${after ? `<div class="session-group"><div class="session-group-title">${escapeHtml(sectionTitle('afterSummary', 'Post-session assessment'))}</div>${after}</div>` : ''}
       ${s.clinicalNotes ? `<div class="session-group"><div class="session-group-title">Physio notes</div><p class="session-notes">${escapeHtml(s.clinicalNotes)}</p></div>` : ''}
@@ -586,6 +589,24 @@ function renderCasesList(casesList) {
 
 function attachCardEvents() {
   // Session pills: open one session's details; tapping the open one closes it.
+  // Send a saved session's report to Clinicea (sessions saved while sync was off, or that failed).
+  listEl.querySelectorAll('[data-sync-session]').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      btn.disabled = true;
+      btn.textContent = 'Sending…';
+      try {
+        const res = await api(`/api/sessions/${encodeURIComponent(btn.dataset.syncSession)}/sync`, { method: 'POST' });
+        const st = res.session && res.session.cliniceaSyncStatus;
+        if (st !== 'synced') alert(`Not sent: ${(res.session && res.session.cliniceaSyncError) || st}`);
+        await loadCases();
+      } catch (err) {
+        alert(`Not sent: ${err.message}`);
+        btn.disabled = false;
+        btn.textContent = 'Send to Clinicea';
+      }
+    });
+  });
+
   listEl.querySelectorAll('[data-open-session]').forEach((btn) => {
     btn.addEventListener('click', () => {
       const caseId = btn.dataset.case;

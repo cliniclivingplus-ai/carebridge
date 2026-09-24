@@ -2480,3 +2480,11 @@ body {
   color: var(--danger-text);
   font-weight: 700;
 }
+
+.session-send-btn {
+  width: auto;
+  min-height: 36px;
+  margin-top: 8px;
+  padding: 6px 14px;
+  font-size: 13px;
+}
