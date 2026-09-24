@@ -67,7 +67,8 @@ const sessionConfig = {
 if (db.isConfigured()) {
   try {
     const pgSession = require('connect-pg-simple')(session);
-    sessionConfig.store = new pgSession({ pool: db.getPool(), tableName: 'session', createTableIfMissing: true });
+    // The session table is created by db/schema.sql, so no extra check on every start.
+    sessionConfig.store = new pgSession({ pool: db.getPool(), tableName: 'session', createTableIfMissing: false });
   } catch (err) {
     console.error('[session] Postgres session store setup failed, using memory store:', err.message);
   }
