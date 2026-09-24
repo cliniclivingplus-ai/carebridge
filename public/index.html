@@ -2,11 +2,12 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
-<title>CareBridge - Physio Partner Dashboard</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+<title>CareBridge</title>
+<meta name="theme-color" content="#ffffff" />
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="style.css" />
 </head>
 <body>
@@ -23,8 +24,8 @@
         </div>
         <span>CareBridge</span>
       </div>
-      <h2>CLP + PhysioWay Portal</h2>
-      <p class="subtitle">Access home-visit sessions &amp; notes for your team</p>
+      <h2>Sign in</h2>
+      <p class="subtitle">Home-visit physiotherapy for CLP and PhysioWay teams.</p>
 
       <!-- Sign In Form -->
       <form id="login-form" class="auth-form">
@@ -32,7 +33,7 @@
           <label for="username">Username</label>
           <div class="input-wrapper">
             <svg class="input-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-            <input type="text" id="username" autocomplete="username" placeholder="e.g. physio_jane" required />
+            <input type="text" id="username" autocomplete="username" placeholder="Your username" required />
           </div>
         </div>
 
@@ -48,12 +49,11 @@
         </div>
 
         <button type="submit" class="btn-primary">
-          <span>Sign in to Dashboard</span>
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+          <span>Sign in</span>
         </button>
         <!-- Hidden unless the server reports demo mode (no Clinicea key); see init() in app.js. -->
         <div class="demo-accounts-pill" id="demo-accounts-pill" hidden>
-          <span>Quick Demo Roles:</span>
+          <span>Demo accounts:</span>
           <button type="button" class="btn-demo-login" data-user="sales_user">Sales Team</button>
           <button type="button" class="btn-demo-login" data-user="dr_ritika">Dr. Ritika (Doctor)</button>
           <button type="button" class="btn-demo-login" data-user="physio_jane">Physio Jane</button>
@@ -76,6 +76,7 @@
             <div class="brand-name">CareBridge</div>
             <div class="brand-sub">CLP + PhysioWay</div>
           </div>
+        </div>
         <div class="nav-right">
           <!-- Only shown on demo data (no Clinicea key); see showApp() in app.js. -->
           <div id="mode-badge" class="mode-badge" hidden>
@@ -88,29 +89,24 @@
               <span id="who" class="user-name">Jane</span>
               <span id="user-role-badge" class="role-badge">Physio</span>
             </div>
-            <button id="team-settings-btn" class="icon-btn" title="Manage Team Accounts (Sales & Doctor)" hidden>
+            <button id="team-settings-btn" class="icon-btn" title="Team accounts" aria-label="Team accounts" hidden>
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
             </button>
-            <button id="profile-settings-btn" class="icon-btn" title="Account Settings & Edit Profile">
+            <button id="profile-settings-btn" class="icon-btn" title="My account" aria-label="My account">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.38a2 2 0 0 0-.73-2.73l-.15-.09a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
             </button>
-            <button id="logout-btn" class="icon-btn" title="Log out">
+            <button id="logout-btn" class="icon-btn" title="Sign out" aria-label="Sign out">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
             </button>
           </div>
-        </div>
       </div>
     </header>
 
     <main class="main-content">
       <!-- Dynamic Role Banner -->
-      <section id="role-banner" class="role-banner glass-card" style="margin-bottom: 20px; padding: 18px 24px;">
-        <div style="display: flex; justify-content: space-between; align-items: center;">
-          <div>
-            <h2 id="role-banner-title" style="margin: 0; font-size: 1.3rem; font-weight: 700; color: #0f172a;">CareBridge Portal</h2>
-            <p id="role-banner-sub" style="margin: 4px 0 0; font-size: 0.9rem; color: #64748b;">Manage home-visit sessions and patient care.</p>
-          </div>
-        </div>
+      <section id="role-banner" class="role-banner">
+        <h1 id="role-banner-title">CareBridge</h1>
+        <p id="role-banner-sub"></p>
       </section>
       <!-- Date Controls Bar -->
       <section class="date-bar">
@@ -158,22 +154,10 @@
           <input type="text" id="search-input" placeholder="Search patient, phone, or location..." />
         </div>
         <div class="filter-chips">
-          <button class="chip active" data-filter="open">
-            <svg class="chip-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
-            <span>Open Tasks</span>
-          </button>
-          <button class="chip" data-filter="mine">
-            <svg class="chip-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-            <span>My Cases</span>
-          </button>
-          <button class="chip" data-filter="all">
-            <svg class="chip-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
-            <span>All Cases</span>
-          </button>
-          <button class="chip" data-filter="completed">
-            <svg class="chip-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
-            <span>Completed</span>
-          </button>
+          <button class="chip active" data-filter="open">Open Tasks</button>
+          <button class="chip" data-filter="mine">My Cases</button>
+          <button class="chip" data-filter="all">All Cases</button>
+          <button class="chip" data-filter="completed">Completed</button>
         </div>
       </section>
 
@@ -181,11 +165,11 @@
       <section class="lookup-section glass-card">
         <div class="lookup-header">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-          <strong>Look up patient by ID to Enroll</strong>
+          <strong>Enroll a patient</strong>
         </div>
         <form id="lookup-form" class="lookup-form">
-          <input type="text" id="lookup-input" placeholder="Enter patient's Clinicea ID (e.g. CLP23)" autocomplete="off" required />
-          <button type="submit" class="pill-btn">Search &amp; Enroll</button>
+          <input type="text" id="lookup-input" placeholder="Clinicea file number, e.g. CLP23" autocomplete="off" required />
+          <button type="submit" class="pill-btn">Find patient</button>
         </form>
         <div id="lookup-result" class="lookup-result" hidden></div>
         <p id="lookup-error" class="error"></p>
@@ -212,8 +196,8 @@
         <div class="empty-icon">
           <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect width="18" height="18" x="3" y="4" rx="2" ry="2"/><line x1="16" x2="16" y1="2" y2="6"/><line x1="8" x2="8" y1="2" y2="6"/><line x1="3" x2="21" y1="10" y2="10"/><path d="m9 16 2 2 4-4"/></svg>
         </div>
-        <h3>No Home-Visit Cases Found</h3>
-        <p>There are no physiotherapy cases matching your filter criteria.</p>
+        <h3>No cases here yet</h3>
+        <p>Cases matching this view will appear here.</p>
       </div>
 
       <!-- Appointments Cards Container -->
@@ -339,21 +323,21 @@
     <div class="modal-card glass-card">
       <div class="modal-header">
         <div>
-          <h3>Enroll Patient in Home-Visit Case</h3>
-          <p id="allot-modal-subtitle">Sales Team &amp; CLP Doctor Case Setup</p>
+          <h3>Enroll patient</h3>
+          <p id="allot-modal-subtitle">Set up the home-visit programme</p>
         </div>
-        <button id="close-allot-modal" class="close-btn" type="button">&times;</button>
+        <button id="close-allot-modal" class="close-btn" type="button" aria-label="Close">&times;</button>
       </div>
 
       <form id="allot-form">
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 16px;">
-          <div class="input-group" style="margin-bottom:0">
-            <label for="allot-patient-id">Clinicea Patient ID</label>
+        <div class="form-row">
+          <div class="input-group">
+            <label for="allot-patient-id">Clinicea file number</label>
             <input type="text" id="allot-patient-id" placeholder="e.g. CLP88" required />
           </div>
-          <div class="input-group" style="margin-bottom:0">
-            <label for="allot-patient-name">Patient Name</label>
-            <input type="text" id="allot-patient-name" placeholder="Patient Full Name" required />
+          <div class="input-group">
+            <label for="allot-patient-name">Patient name</label>
+            <input type="text" id="allot-patient-name" required />
           </div>
         </div>
         <input type="hidden" id="allot-patient-mobile" />
@@ -362,51 +346,51 @@
         <input type="hidden" id="allot-patient-pcode" />
 
         <div class="input-group">
-          <label for="allot-symptoms">Primary Symptoms &amp; Clinical Concern</label>
-          <textarea id="allot-symptoms" rows="2" placeholder="e.g. Post-ACL reconstruction rehabilitation, knee stiffness & severe quad weakness" required></textarea>
+          <label for="allot-symptoms">Reason for referral / symptoms</label>
+          <textarea id="allot-symptoms" rows="2" placeholder="e.g. Post-ACL reconstruction rehab, knee stiffness, quad weakness" required></textarea>
         </div>
 
         <div class="input-group">
-          <label for="allot-count">Total Allotted Sessions Count</label>
+          <label for="allot-count">Number of sessions</label>
           <input type="number" id="allot-count" min="1" max="50" value="10" required />
         </div>
 
-        <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; margin-bottom: 16px;">
-          <div class="input-group" style="margin-bottom:0">
-            <label for="allot-start-date">First Visit Date</label>
+        <div class="form-row">
+          <div class="input-group">
+            <label for="allot-start-date">First visit</label>
             <input type="date" id="allot-start-date" required />
           </div>
-          <div class="input-group" style="margin-bottom:0">
-            <label for="allot-start-time">Visit Time</label>
+          <div class="input-group">
+            <label for="allot-start-time">Time</label>
             <input type="time" id="allot-start-time" value="10:00" required />
           </div>
-          <div class="input-group" style="margin-bottom:0">
-            <label for="allot-pattern">Repeat Pattern</label>
+          <div class="input-group">
+            <label for="allot-pattern">Repeats</label>
             <select id="allot-pattern" class="styled-select">
               <option value="MWF">Mon / Wed / Fri</option>
               <option value="TTS">Tue / Thu / Sat</option>
-              <option value="WEEKDAYS">Mon – Fri (Weekdays)</option>
-              <option value="DAILY">Every Day (Daily)</option>
+              <option value="WEEKDAYS">Weekdays (Mon – Fri)</option>
+              <option value="DAILY">Every day</option>
             </select>
           </div>
         </div>
 
         <div class="input-group">
-          <label for="allot-physio">Assign Physio (Optional)</label>
+          <label for="allot-physio">Physio <span class="field-hint">optional</span></label>
           <select id="allot-physio" class="styled-select">
-            <option value="">-- Open Task (Unassigned Pool) --</option>
+            <option value="">Open to any physio</option>
           </select>
         </div>
 
         <div class="input-group">
-          <label for="allot-notes">Special Instructions &amp; Care Plan Notes</label>
-          <textarea id="allot-notes" rows="2" placeholder="Special instructions for the home visit physio..."></textarea>
+          <label for="allot-notes">Instructions for the physio <span class="field-hint">optional</span></label>
+          <textarea id="allot-notes" rows="2"></textarea>
         </div>
 
         <div class="modal-footer">
           <button type="button" id="btn-cancel-allot" class="btn-secondary">Cancel</button>
           <button type="submit" class="btn-primary">
-            <span>Create Case &amp; Publish Open Task</span>
+            <span>Create case</span>
           </button>
         </div>
       </form>
@@ -418,45 +402,43 @@
     <div class="modal-card glass-card">
       <div class="modal-header">
         <div>
-          <h3>Edit Session Allotment</h3>
-          <p id="edit-allotment-modal-subtitle">Update session count, physio assignment &amp; care notes</p>
+          <h3>Edit programme</h3>
+          <p id="edit-allotment-modal-subtitle">Sessions, physio and instructions</p>
         </div>
-        <button id="close-edit-allotment-modal" class="close-btn" type="button">&times;</button>
+        <button id="close-edit-allotment-modal" class="close-btn" type="button" aria-label="Close">&times;</button>
       </div>
 
       <form id="edit-allotment-form">
         <input type="hidden" id="edit-allotment-case-id" />
         
-        <div class="patient-summary-banner" style="background: rgba(255, 255, 255, 0.05); padding: 12px 16px; border-radius: 8px; margin-bottom: 16px; border: 1px solid rgba(255,255,255,0.1);">
-          <div style="font-weight: 600; font-size: 15px;" id="edit-allotment-patient-name">Patient Name</div>
-          <div style="font-size: 13px; color: var(--text-muted); margin-top: 2px;" id="edit-allotment-progress-info">Completed 0 of 10 Sessions</div>
+        <div class="patient-summary-banner">
+          <div class="summary-name" id="edit-allotment-patient-name"></div>
+          <div class="summary-meta" id="edit-allotment-progress-info"></div>
         </div>
 
         <div class="input-group">
-          <label for="edit-allotment-count">Total Allotted Sessions Count</label>
+          <label for="edit-allotment-count">Number of sessions</label>
           <input type="number" id="edit-allotment-count" min="1" max="100" required />
-          <span style="font-size: 12px; color: var(--text-muted); margin-top: 4px; display: block;">Must be equal to or greater than completed sessions count.</span>
+          <span class="field-hint">Can't be lower than the sessions already completed. Visits are added or removed to match.</span>
         </div>
 
         <div class="input-group">
-          <label for="edit-allotment-physio">Assign / Reassign Physio (Optional)</label>
+          <label for="edit-allotment-physio">Physio</label>
           <select id="edit-allotment-physio">
-            <option value="">-- Open Task (Unassigned Pool) --</option>
+            <option value="">Open to any physio</option>
           </select>
         </div>
 
         <div class="input-group">
-          <label for="edit-allotment-instructions">Special Instructions &amp; Care Plan Notes</label>
-          <textarea id="edit-allotment-instructions" rows="3" placeholder="Special instructions for visits"></textarea>
+          <label for="edit-allotment-instructions">Instructions for the physio</label>
+          <textarea id="edit-allotment-instructions" rows="3"></textarea>
         </div>
 
         <p id="edit-allotment-error" class="error"></p>
 
-        <div style="display: flex; gap: 12px; justify-content: flex-end; margin-top: 20px;">
+        <div class="modal-footer">
           <button type="button" id="cancel-edit-allotment" class="btn-secondary">Cancel</button>
-          <button type="submit" class="btn-primary">
-            <span>Save Allotment Changes</span>
-          </button>
+          <button type="submit" class="btn-primary">Save changes</button>
         </div>
       </form>
     </div>
@@ -467,56 +449,56 @@
     <div class="modal-card glass-card">
       <div class="modal-header">
         <div>
-          <h3>My Profile &amp; Account Settings</h3>
-          <p id="profile-modal-subtitle">Manage account details, password &amp; account deletion</p>
+          <h3>My account</h3>
+          <p id="profile-modal-subtitle">Your details and password</p>
         </div>
-        <button id="close-profile-modal" class="close-btn" type="button">&times;</button>
+        <button id="close-profile-modal" class="close-btn" type="button" aria-label="Close">&times;</button>
       </div>
 
       <div class="profile-modal-body">
         <!-- Edit Personal Profile Info -->
         <form id="profile-edit-form" class="auth-form">
-          <h4 class="section-title">Edit Profile Details</h4>
+          <h4 class="section-title">Details</h4>
           <div class="input-group">
-            <label for="prof-name">Full Name</label>
-            <input type="text" id="prof-name" placeholder="Full Name" required />
+            <label for="prof-name">Full name</label>
+            <input type="text" id="prof-name" required />
           </div>
           <div class="input-group">
-            <label for="prof-email">Email Address</label>
-            <input type="email" id="prof-email" placeholder="email@example.com" />
+            <label for="prof-email">Email</label>
+            <input type="email" id="prof-email" />
           </div>
           <div class="input-group">
-            <label for="prof-phone">Phone Number</label>
-            <input type="text" id="prof-phone" placeholder="+91..." />
+            <label for="prof-phone">Phone</label>
+            <input type="tel" id="prof-phone" placeholder="+91" />
           </div>
-          <button type="submit" class="btn-primary">Save Profile Details</button>
+          <button type="submit" class="btn-primary">Save details</button>
         </form>
 
         <hr class="modal-divider" />
 
         <!-- Change Password Form -->
         <form id="profile-password-form" class="auth-form">
-          <h4 class="section-title">Change Password</h4>
+          <h4 class="section-title">Password</h4>
           <div class="input-group">
-            <label for="prof-old-pass">Current Password</label>
-            <input type="password" id="prof-old-pass" placeholder="••••••••" required />
+            <label for="prof-old-pass">Current password</label>
+            <input type="password" id="prof-old-pass" autocomplete="current-password" required />
           </div>
           <div class="input-group">
-            <label for="prof-new-pass">New Password</label>
-            <input type="password" id="prof-new-pass" placeholder="New Password (min 4 chars)" required />
+            <label for="prof-new-pass">New password</label>
+            <input type="password" id="prof-new-pass" autocomplete="new-password" placeholder="At least 6 characters" required />
           </div>
-          <button type="submit" class="btn-secondary">Update Password</button>
+          <button type="submit" class="btn-secondary">Change password</button>
         </form>
 
         <hr class="modal-divider" />
 
         <!-- Account Deletion Zone -->
         <div class="danger-zone-box">
-          <h4 class="section-title text-danger">Delete Account</h4>
-          <p>Permanently remove your partner account from CareBridge.</p>
+          <h4 class="section-title text-danger">Delete account</h4>
+          <p>Permanently removes your CareBridge account. This can't be undone.</p>
           <button type="button" id="btn-delete-account" class="btn-danger">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
-            <span>Delete My Account</span>
+            <span>Delete my account</span>
           </button>
         </div>
       </div>
@@ -528,18 +510,18 @@
     <div class="modal-card glass-card modal-large">
       <div class="modal-header">
         <div>
-          <h3>Manage Team Accounts</h3>
-          <p>Sales Team &amp; CLP Doctor: View, edit profile details, change roles/passwords, or delete accounts</p>
+          <h3>Team accounts</h3>
+          <p>Everyone who can sign in to CareBridge</p>
         </div>
-        <button id="close-team-modal" class="close-btn" type="button">&times;</button>
+        <button id="close-team-modal" class="close-btn" type="button" aria-label="Close">&times;</button>
       </div>
 
       <div class="team-modal-toolbar">
         <div class="search-box inline-search">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-          <input type="text" id="team-search-input" placeholder="Search team member..." />
+          <input type="text" id="team-search-input" placeholder="Search by name or username" />
         </div>
-        <button id="btn-add-team-member" class="pill-btn">+ Add Team Member</button>
+        <button id="btn-add-team-member" class="pill-btn">Add member</button>
       </div>
 
       <div id="team-members-list" class="team-members-grid"></div>
@@ -551,47 +533,48 @@
     <div class="modal-card glass-card">
       <div class="modal-header">
         <div>
-          <h3>Edit Team Account</h3>
-          <p id="team-edit-subtitle">Modify profile details, role, or password</p>
+          <h3>Edit account</h3>
+          <p id="team-edit-subtitle"></p>
         </div>
-        <button id="close-team-edit-modal" class="close-btn" type="button">&times;</button>
+        <button id="close-team-edit-modal" class="close-btn" type="button" aria-label="Close">&times;</button>
       </div>
 
       <form id="team-edit-form" class="auth-form">
         <input type="hidden" id="edit-team-username" />
         
         <div class="input-group">
-          <label for="edit-team-name">Full Name</label>
-          <input type="text" id="edit-team-name" placeholder="Full Name" required />
+          <label for="edit-team-name">Full name</label>
+          <input type="text" id="edit-team-name" required />
         </div>
 
         <div class="input-group">
-          <label for="edit-team-role">Account Department / Role</label>
+          <label for="edit-team-role">Role</label>
           <select id="edit-team-role" class="styled-select" required>
-            <option value="sales">Sales Team</option>
-            <option value="clp_doctor">CLP Doctor (Dr. Ritika)</option>
-            <option value="external_physio">PhysioWay Physio</option>
+            <option value="external_physio">PhysioWay physio</option>
+            <option value="clp_doctor">CLP doctor</option>
+            <option value="sales">Sales</option>
           </select>
         </div>
 
-        <div class="input-group">
-          <label for="edit-team-email">Email Address</label>
-          <input type="email" id="edit-team-email" placeholder="email@example.com" />
+        <div class="form-row">
+          <div class="input-group">
+            <label for="edit-team-email">Email</label>
+            <input type="email" id="edit-team-email" />
+          </div>
+          <div class="input-group">
+            <label for="edit-team-phone">Phone</label>
+            <input type="tel" id="edit-team-phone" placeholder="+91" />
+          </div>
         </div>
 
         <div class="input-group">
-          <label for="edit-team-phone">Phone Number</label>
-          <input type="text" id="edit-team-phone" placeholder="+91..." />
-        </div>
-
-        <div class="input-group">
-          <label for="edit-team-password">Reset Password (Optional)</label>
-          <input type="password" id="edit-team-password" placeholder="Leave blank to keep current password" />
+          <label for="edit-team-password">New password <span class="field-hint">optional</span></label>
+          <input type="password" id="edit-team-password" autocomplete="new-password" placeholder="Leave blank to keep the current password" />
         </div>
 
         <div class="modal-footer">
           <button type="button" id="btn-cancel-team-edit" class="btn-secondary">Cancel</button>
-          <button type="submit" class="btn-primary">Save Changes</button>
+          <button type="submit" class="btn-primary">Save changes</button>
         </div>
       </form>
     </div>
@@ -602,71 +585,59 @@
     <div class="modal-card glass-card">
       <div class="modal-header">
         <div>
-          <h3>Add New Team Member</h3>
-          <p>Sales &amp; CLP Doctor: Create a new team account</p>
+          <h3>Add member</h3>
+          <p>They can sign in straight away with this username and password</p>
         </div>
-        <button id="close-team-create-modal" class="close-btn" type="button">&times;</button>
+        <button id="close-team-create-modal" class="close-btn" type="button" aria-label="Close">&times;</button>
       </div>
 
       <form id="team-create-form" class="auth-form">
         <div class="input-group">
-          <label for="create-team-name">Full Name</label>
-          <input type="text" id="create-team-name" placeholder="e.g. Dr. Alex Morgan" required />
+          <label for="create-team-name">Full name</label>
+          <input type="text" id="create-team-name" required />
+        </div>
+
+        <div class="form-row">
+          <div class="input-group">
+            <label for="create-team-username">Username</label>
+            <input type="text" id="create-team-username" autocomplete="off" placeholder="e.g. physio_alex" required />
+          </div>
+          <div class="input-group">
+            <label for="create-team-password">Password</label>
+            <input type="password" id="create-team-password" autocomplete="new-password" placeholder="At least 6 characters" required />
+          </div>
         </div>
 
         <div class="input-group">
-          <label for="create-team-username">Username</label>
-          <input type="text" id="create-team-username" placeholder="e.g. physio_alex" required />
-        </div>
-
-        <div class="input-group">
-          <label for="create-team-password">Password</label>
-          <input type="password" id="create-team-password" placeholder="Min. 6 characters" required />
-        </div>
-
-        <div class="input-group">
-          <label for="create-team-role">Account Department / Role</label>
+          <label for="create-team-role">Role</label>
           <select id="create-team-role" class="styled-select" required>
-            <option value="external_physio" selected>PhysioWay Physio (Default)</option>
-            <option value="sales">Sales Team</option>
-            <option value="clp_doctor">CLP Doctor</option>
+            <option value="external_physio" selected>PhysioWay physio</option>
+            <option value="clp_doctor">CLP doctor</option>
+            <option value="sales">Sales</option>
           </select>
         </div>
 
-        <div class="input-group">
-          <label for="create-team-email">Email Address (Optional)</label>
-          <input type="email" id="create-team-email" placeholder="email@example.com" />
+        <div class="form-row">
+          <div class="input-group">
+            <label for="create-team-email">Email <span class="field-hint">optional</span></label>
+            <input type="email" id="create-team-email" />
+          </div>
+          <div class="input-group">
+            <label for="create-team-phone">Phone <span class="field-hint">optional</span></label>
+            <input type="tel" id="create-team-phone" placeholder="+91" />
+          </div>
         </div>
 
-        <div class="input-group">
-          <label for="create-team-phone">Phone Number (Optional)</label>
-          <input type="text" id="create-team-phone" placeholder="+91..." />
-        </div>
+        <p id="team-create-error" class="error"></p>
 
         <div class="modal-footer">
           <button type="button" id="btn-cancel-team-create" class="btn-secondary">Cancel</button>
-          <button type="submit" class="btn-primary">Create Account</button>
+          <button type="submit" class="btn-primary">Add member</button>
         </div>
-        <p id="team-create-error" class="error"></p>
       </form>
     </div>
   </div>
 
-  <script>
-    (function() {
-      try {
-        var raw = localStorage.getItem('carebridge_user');
-        if (raw) {
-          var data = JSON.parse(raw);
-          if (data && data.user) {
-            document.getElementById('app-screen').hidden = false;
-            return;
-          }
-        }
-      } catch (e) {}
-      document.getElementById('login-screen').hidden = false;
-    })();
-  </script>
   <script src="app.js"></script>
 </body>
 </html>

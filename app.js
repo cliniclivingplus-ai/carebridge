@@ -257,6 +257,12 @@ app.get('/api/me', (req, res) => {
   res.json({ user: req.session.user || null, liveMode: clinicea.isLiveMode() });
 });
 
+// Current profile details, so the My account form opens filled in
+app.get('/api/me/profile', requireAuth, async (req, res) => {
+  const me = (await partners.listTeam()).find((t) => t.username === req.session.user.username) || {};
+  res.json({ name: me.name || req.session.user.name || '', email: me.email || '', phone: me.phone || '' });
+});
+
 // Update Profile Details (Name, Email, Phone)
 app.put('/api/me/profile', requireAuth, async (req, res) => {
   const { name, email, phone } = req.body || {};

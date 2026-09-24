@@ -101,6 +101,53 @@ function adjustDate(days) {
   loadAppointments().catch(() => {});
 }
 
+// Short status notice at the bottom of the screen (replaces browser alert pop-ups).
+function notify(message, tone) {
+  const kind = tone || (/fail|error|not sent|cannot|can't|couldn't/i.test(message) ? 'bad' : 'ok');
+  let host = document.getElementById('toast-host');
+  if (!host) {
+    host = document.createElement('div');
+    host.id = 'toast-host';
+    host.setAttribute('role', 'status');
+    host.setAttribute('aria-live', 'polite');
+    document.body.appendChild(host);
+  }
+  const toast = document.createElement('div');
+  toast.className = `toast toast-${kind}`;
+  toast.textContent = message;
+  host.appendChild(toast);
+  setTimeout(() => toast.classList.add('toast-out'), kind === 'bad' ? 6000 : 3500);
+  setTimeout(() => toast.remove(), kind === 'bad' ? 6400 : 3900);
+}
+
+// In-app confirmation window (replaces browser confirm). Resolves true when confirmed.
+function confirmDialog({ title, body, confirmLabel = 'Confirm', danger = false }) {
+  return new Promise((resolve) => {
+    const backdrop = document.createElement('div');
+    backdrop.className = 'modal-backdrop';
+    backdrop.innerHTML = `
+      <div class="modal-card confirm-card" role="alertdialog" aria-modal="true" aria-labelledby="confirm-title" aria-describedby="confirm-body">
+        <div class="modal-header"><div><h3 id="confirm-title"></h3></div></div>
+        <form novalidate>
+          <p id="confirm-body" class="confirm-body"></p>
+          <div class="modal-footer">
+            <button type="button" class="btn-secondary" data-cancel>Cancel</button>
+            <button type="submit" class="${danger ? 'btn-danger' : 'btn-primary'}" data-ok></button>
+          </div>
+        </form>
+      </div>`;
+    backdrop.querySelector('#confirm-title').textContent = title;
+    backdrop.querySelector('#confirm-body').textContent = body;
+    backdrop.querySelector('[data-ok]').textContent = confirmLabel;
+    const close = (result) => { backdrop.remove(); resolve(result); };
+    backdrop.querySelector('[data-cancel]').addEventListener('click', () => close(false));
+    backdrop.querySelector('form').addEventListener('submit', (e) => { e.preventDefault(); close(true); });
+    backdrop.addEventListener('keydown', (e) => { if (e.key === 'Escape') close(false); });
+    document.body.appendChild(backdrop);
+    backdrop.querySelector('[data-cancel]').focus();
+  });
+}
+
 async function api(path, options = {}) {
   const res = await fetch(path, {
     headers: { 'Content-Type': 'application/json' },
@@ -201,29 +248,29 @@ function showApp(userObj, liveMode) {
   if (lookupSection) lookupSection.hidden = currentUserRole === 'external_physio';
 
   if (currentUserRole === 'external_physio') {
-    if (bannerTitle) bannerTitle.textContent = 'Physio Care Portal';
-    if (bannerSub) bannerSub.textContent = 'See the home-visit cases set up by the clinic, take a case, and record your session notes.';
-    if (statCard1) statCard1.textContent = 'Total Cases';
-    if (statCard2) statCard2.textContent = 'My Claimed Cases';
-    if (statCard3) statCard3.textContent = 'Available Open Cases';
+    if (bannerTitle) bannerTitle.textContent = 'Home visits';
+    if (bannerSub) bannerSub.textContent = 'Take open cases, work through today\'s visits and record each session.';
+    if (statCard1) statCard1.textContent = 'All cases';
+    if (statCard2) statCard2.textContent = 'My active cases';
+    if (statCard3) statCard3.textContent = 'Open to take';
 
     updateFilterChipLabels({
-      open: 'Open Cases (Claimable)',
-      mine: 'My Cases',
-      all: 'All Cases',
+      open: 'Open cases',
+      mine: 'My cases',
+      all: 'All cases',
       completed: 'Completed'
     });
-    updateMobileNavLabels('Open Cases', 'My Cases');
+    updateMobileNavLabels('Open cases', 'My cases');
     orderFilterChips(['all', 'completed', 'open', 'mine']);
     setActiveFilter('all');
   } else {
     // Sales and Doctor do the same job on this screen (enrol patients, watch progress), so they
     // get the same layout and the same words -- only the page title differs.
     const isDoctor = currentUserRole === 'clp_doctor';
-    if (bannerTitle) bannerTitle.textContent = isDoctor ? 'Clinical Director Dashboard' : 'Sales Enrolment Portal';
+    if (bannerTitle) bannerTitle.textContent = isDoctor ? 'Clinical overview' : 'Enrollments';
     if (bannerSub) bannerSub.textContent = isDoctor
-      ? 'Enrol patients by Clinicea ID, follow every home-visit programme, and review session notes.'
-      : 'Search patients by Clinicea ID, set up home visit plans, and monitor physio assignments.';
+      ? 'Enroll patients, follow every home-visit programme and review session reports.'
+      : 'Enroll patients for home visits and follow each programme through to completion.';
     if (lookupSection) {
       const mainContent = document.querySelector('.main-content');
       const roleBanner = document.getElementById('role-banner');
@@ -231,16 +278,16 @@ function showApp(userObj, liveMode) {
         mainContent.insertBefore(lookupSection, roleBanner.nextElementSibling);
       }
     }
-    if (statCard1) statCard1.textContent = 'Total Enrolments';
-    if (statCard2) statCard2.textContent = 'Assigned Cases';
-    if (statCard3) statCard3.textContent = 'Unassigned Cases';
+    if (statCard1) statCard1.textContent = 'Total enrollments';
+    if (statCard2) statCard2.textContent = 'In progress';
+    if (statCard3) statCard3.textContent = 'Waiting for a physio';
 
     // "Assigned" = a physio has taken it and sessions remain; "Unassigned" = no physio yet.
     updateFilterChipLabels({
-      all: 'All Enrolments',
+      all: 'All enrollments',
       completed: 'Completed',
-      mine: 'Assigned Cases',
-      open: 'Unassigned Cases'
+      mine: 'Assigned',
+      open: 'Unassigned'
     });
     updateMobileNavLabels('Unassigned', 'Assigned');
     orderFilterChips(['all', 'completed', 'mine', 'open']);
@@ -282,15 +329,14 @@ function teamMemberName(username) {
   return member ? member.name : username;
 }
 
-function assignOptionsHtml(currentAssignee) {
-  const options = ['<option value="">-- Open Task (Unassigned) --</option>'];
-  const physios = team.filter((m) => m.role === 'external_physio' || !m.role);
-  for (const member of physios) {
-    const label = member.username === currentUser ? `${member.name} (me)` : member.name;
-    const selected = member.username === currentAssignee ? 'selected' : '';
-    options.push(`<option value="${member.username}" ${selected}>${label}</option>`);
-  }
-  return options.join('');
+// A physio's own case: keep it, pass it to a colleague, or put it back in the open list.
+function handoverOptionsHtml() {
+  const others = team.filter((m) => (m.role === 'external_physio' || !m.role) && m.username !== currentUser);
+  return [
+    '<option value="__keep" selected>Keep this case</option>',
+    ...others.map((m) => `<option value="${escapeHtml(m.username)}">Give to ${escapeHtml(m.name)}</option>`),
+    '<option value="">Return to open cases</option>',
+  ].join('');
 }
 
 // Always called with EVERY case (not the filtered list on screen), so the counters don't
@@ -301,7 +347,7 @@ function updateStats(casesList) {
   const activeCount = casesList.filter((c) => c.status === 'in_progress').length;
   const myCount = casesList.filter((c) => c.assignedPhysio === currentUser && c.status !== 'completed').length;
 
-  if (currentUserRole === 'sales') {
+  if (currentUserRole === 'sales' || currentUserRole === 'clp_doctor') {
     if (statMyVisits) statMyVisits.textContent = activeCount;
     if (statUnassigned) statUnassigned.textContent = openCount;
   } else {
@@ -414,12 +460,15 @@ function sessionDetailHtml(s, allotted) {
     <div class="session-detail">
       <div class="session-detail-head">
         <strong>Session ${s.sessionNumber} of ${allotted}</strong>
-        <span>${escapeHtml(s.physioUsername ? teamMemberName(s.physioUsername) : 'Physio')} - ${escapeHtml(when)}</span>
+        <span>${escapeHtml(s.physioUsername ? teamMemberName(s.physioUsername) : 'Physio')} · ${escapeHtml(when)}</span>
       </div>
-      <div class="session-sync sync-${escapeHtml(sync)}">${escapeHtml(SYNC_LABELS[sync] || sync)}${s.cliniceaSyncError && sync !== 'synced' ? ` <small>(${escapeHtml(s.cliniceaSyncError)})</small>` : ''}</div>
-      ${['pending', 'failed'].includes(sync) && (currentUserRole !== 'external_physio' || s.physioUsername === currentUser)
-        ? `<button type="button" class="btn-secondary session-send-btn" data-sync-session="${escapeHtml(s.id)}">Send to Clinicea</button>`
-        : ''}
+      <div class="session-sync-row">
+        <span class="session-sync sync-${escapeHtml(sync)}">${escapeHtml(SYNC_LABELS[sync] || sync)}</span>
+        ${['pending', 'failed'].includes(sync) && (currentUserRole !== 'external_physio' || s.physioUsername === currentUser)
+          ? `<button type="button" class="btn-secondary session-send-btn" data-sync-session="${escapeHtml(s.id)}">Send to Clinicea</button>`
+          : ''}
+      </div>
+      ${s.cliniceaSyncError && sync !== 'synced' ? `<p class="session-sync-note">${escapeHtml(s.cliniceaSyncError)}</p>` : ''}
       ${before ? `<div class="session-group"><div class="session-group-title">${escapeHtml(sectionTitle('beforeAssessment', 'Session details'))}</div>${before}</div>` : ''}
       ${after ? `<div class="session-group"><div class="session-group-title">${escapeHtml(sectionTitle('afterSummary', 'Post-session assessment'))}</div>${after}</div>` : ''}
       ${s.clinicalNotes ? `<div class="session-group"><div class="session-group-title">Physio notes</div><p class="session-notes">${escapeHtml(s.clinicalNotes)}</p></div>` : ''}
@@ -440,8 +489,8 @@ function visitSummaryHtml(item) {
   return `
     <div class="case-next-visit">
       <div>
-        <span class="case-next-label">Next visit</span>
-        <strong>${next ? `${escapeHtml(new Date(`${next.date}T00:00:00`).toLocaleDateString([], { weekday: 'short', day: 'numeric', month: 'short' }))} · ${escapeHtml(prettyTime(next.time))}` : 'None booked'}</strong>
+        <span class="case-next-label">${item.status === 'completed' && !next ? 'Visits' : 'Next visit'}</span>
+        <strong>${next ? `${escapeHtml(new Date(`${next.date}T00:00:00`).toLocaleDateString([], { weekday: 'short', day: 'numeric', month: 'short' }))} · ${escapeHtml(prettyTime(next.time))}` : (item.status === 'completed' ? 'Programme complete' : 'None booked')}</strong>
       </div>
       <span class="case-next-meta">${escapeHtml(parts.join(' · '))}${alerts.length ? ` · <span class="case-next-alert">${escapeHtml(alerts.join(', '))}</span>` : ''}</span>
     </div>`;
@@ -465,7 +514,7 @@ function renderCasesList(casesList) {
     const completed = item.completedSessions || 0;
     const pct = allotted > 0 ? Math.min(100, Math.round((completed / allotted) * 100)) : 0;
     const statusClass = `status-${item.status || 'open'}`;
-    const statusLabel = (item.status || 'open').replace('_', ' ');
+    const statusLabel = { open: 'Open', in_progress: 'In progress', completed: 'Completed' }[item.status || 'open'] || item.status;
 
     card.innerHTML = `
       <div class="card-header-bar">
@@ -477,23 +526,23 @@ function renderCasesList(casesList) {
       </div>
 
       <div class="patient-info">
-        <div class="patient-name">${item.patientName || 'Patient'} <small style="font-size:12px; color:var(--text-muted); font-weight:600">(${item.patientId})</small></div>
+        <div class="patient-name">${escapeHtml(item.patientName || 'Patient')}<span class="patient-file-no">${escapeHtml(item.patientId)}</span></div>
         <div class="practitioner-sub">Enrolled by ${teamMemberName(item.createdBy)}</div>
       </div>
 
       <!-- Symptoms & Clinical Concern Box -->
       ${item.symptomsConcern ? `
         <div class="symptoms-box">
-          <strong>Primary Symptoms &amp; Concern</strong>
-          <div>${item.symptomsConcern}</div>
+          <strong>Reason for referral</strong>
+          <div>${escapeHtml(item.symptomsConcern)}</div>
         </div>
       ` : ''}
 
       <!-- Session Allotment & Progress Bar -->
       <div class="session-tracker-box">
         <div class="session-header">
-          <span class="session-title">Home-Visit Programme Progress</span>
-          <span class="session-counts">Completed <strong>${completed}</strong> of <strong>${allotted}</strong> Sessions</span>
+          <span class="session-title">Programme</span>
+          <span class="session-counts"><strong>${completed}</strong> of <strong>${allotted}</strong> sessions completed</span>
         </div>
         <div class="session-progress-bar">
           <div class="session-progress-fill" style="width: ${pct}%;"></div>
@@ -501,7 +550,7 @@ function renderCasesList(casesList) {
         ${canEditAllotment ? `
           <button class="btn-allot-sessions" data-case-id="${item.id}" data-patient-id="${item.patientId || ''}" data-allotted="${allotted}" data-completed="${completed}" data-name="${escapeHtml(item.patientName || 'Patient')}" data-physio="${escapeHtml(item.assignedPhysio || '')}" data-instructions="${escapeHtml(item.instructions || '')}">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v8"/><path d="M8 12h8"/></svg>
-            <span>Edit Allotment</span>
+            <span>Edit</span>
           </button>
         ` : ''}
       </div>
@@ -516,9 +565,9 @@ function renderCasesList(casesList) {
           </a>
         ` : ''}
         ${item.address ? `
-          <a href="https://maps.google.com/?q=${encodeURIComponent([item.address, item.city, item.pcode].filter(Boolean).join(', '))}" target="_blank" class="contact-btn">
+          <a href="https://maps.google.com/?q=${encodeURIComponent([item.address, item.city, item.pcode].filter(Boolean).join(', '))}" target="_blank" rel="noopener" class="contact-btn">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>
-            <span>Map (${item.city || 'Location'})</span>
+            <span>Map</span>
           </a>
         ` : ''}
       </div>
@@ -526,25 +575,26 @@ function renderCasesList(casesList) {
       ${!isPhysio ? `
       <div class="assign-box assign-readonly">
         <span class="assign-label">Physio</span>
-        <span class="assigned-tag">${item.assignedPhysio ? escapeHtml(assignedName) : 'Waiting for a physio to take this case'}</span>
+        <span class="assigned-tag">${item.assignedPhysio ? escapeHtml(assignedName) : '<span class="muted">Waiting for a physio</span>'}</span>
       </div>
       ` : `
       <div class="assign-box">
         <div class="assign-header">
-          <span class="assign-label">Assigned Physio</span>
-          <span class="assigned-tag" data-assign-tag-for="${item.id}">${isMine ? 'Assigned to You' : assignedName}</span>
+          <span class="assign-label">Physio</span>
+          <span class="assigned-tag" data-assign-tag-for="${item.id}">${isMine ? 'You' : (item.assignedPhysio ? escapeHtml(assignedName) : '<span class="muted">Nobody yet</span>')}</span>
         </div>
         <div class="assign-controls">
           ${(isMine && item.status !== 'completed') ? `
             <!-- Hand over: only on your own active case (the server rejects anything else). -->
-            <select class="assign-select" data-assign-for="${item.id}" aria-label="Hand this case to another physio">
-              ${assignOptionsHtml(item.assignedPhysio)}
+            <label class="handover-label" for="handover-${item.id}">Hand over</label>
+            <select class="assign-select" id="handover-${item.id}" data-assign-for="${item.id}">
+              ${handoverOptionsHtml()}
             </select>
           ` : ''}
           ${(!item.assignedPhysio || item.status === 'open') ? `
             <button class="btn-claim-case" data-claim-case="${item.id}">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m5 12 5 5L20 7"/></svg>
-              <span>Take Case</span>
+              <span>Take case</span>
             </button>
           ` : ''}
         </div>
@@ -556,7 +606,7 @@ function renderCasesList(casesList) {
         <div class="feedback-action-strip">
           <button class="btn-open-feedback" data-case-id="${item.id}" data-patient-id="${item.patientId || ''}" data-name="${item.patientName || 'Patient'}">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-            <span>Record Session Feedback (Session ${completed + 1} of ${allotted})</span>
+            <span>Record session ${completed + 1} of ${allotted}</span>
           </button>
         </div>
       ` : ''}
@@ -564,12 +614,12 @@ function renderCasesList(casesList) {
       <!-- Session History Timeline Box -->
       <div class="notes-box">
         <div class="notes-label-bar">
-          <label>Session Evaluation History &amp; Clinicea Sync</label>
+          <label>Sessions</label>
         </div>
         ${(() => {
           const sessions = item.sessions || [];
           if (sessions.length === 0) {
-            return `<div class="empty-card" style="padding:12px"><p style="font-size:12px; margin:0">No sessions completed yet for this home-visit programme.</p></div>`;
+            return `<p class="session-hint">No sessions recorded yet.</p>`;
           }
           const openId = openSessionByCase.get(item.id);
           const openSession = sessions.find((sess) => sess.id === openId);
@@ -582,7 +632,7 @@ function renderCasesList(casesList) {
                 </button>
               `).join('')}
             </div>
-            ${openSession ? sessionDetailHtml(openSession, allotted) : '<p class="session-hint">Tap a session to see what the physio recorded.</p>'}
+            ${openSession ? sessionDetailHtml(openSession, allotted) : '<p class="session-hint">Select a session to see what was recorded.</p>'}
           `;
         })()}
       </div>
@@ -617,10 +667,10 @@ function attachCardEvents() {
       try {
         const res = await api(`/api/sessions/${encodeURIComponent(btn.dataset.syncSession)}/sync`, { method: 'POST' });
         const st = res.session && res.session.cliniceaSyncStatus;
-        if (st !== 'synced') alert(`Not sent: ${(res.session && res.session.cliniceaSyncError) || st}`);
+        if (st !== 'synced') notify(`Not sent: ${(res.session && res.session.cliniceaSyncError) || st}`);
         await loadCases();
       } catch (err) {
-        alert(`Not sent: ${err.message}`);
+        notify(`Not sent: ${err.message}`);
         btn.disabled = false;
         btn.textContent = 'Send to Clinicea';
       }
@@ -646,7 +696,7 @@ function attachCardEvents() {
         await api(`/api/cases/${encodeURIComponent(caseId)}/claim`, { method: 'POST' });
         await loadCases();
       } catch (err) {
-        alert(`Claim failed: ${err.message}`);
+        notify(`Claim failed: ${err.message}`);
         btn.disabled = false;
       }
     });
@@ -656,6 +706,16 @@ function attachCardEvents() {
   listEl.querySelectorAll('select[data-assign-for]').forEach((select) => {
     select.addEventListener('change', async () => {
       const caseId = select.dataset.assignFor;
+      if (select.value === '__keep') return;
+      const target = select.value;
+      const ok = await confirmDialog({
+        title: target ? `Give this case to ${teamMemberName(target)}?` : 'Return this case to open cases?',
+        body: target
+          ? `${teamMemberName(target)} will take over the remaining visits. You won't see this case under My cases any more.`
+          : 'Any physio will be able to take it. You will no longer be assigned to its remaining visits.',
+        confirmLabel: target ? 'Hand over' : 'Return case',
+      });
+      if (!ok) { select.value = '__keep'; return; }
       select.disabled = true;
       try {
         await api(`/api/cases/${encodeURIComponent(caseId)}/assign`, {
@@ -664,7 +724,7 @@ function attachCardEvents() {
         });
         await loadCases();
       } catch (err) {
-        alert(`Assignment failed: ${err.message}`);
+        notify(`Assignment failed: ${err.message}`);
         select.disabled = false;
       }
     });
@@ -679,7 +739,8 @@ function attachCardEvents() {
 
       if (fbCaseId) fbCaseId.value = caseId;
       if (fbPatientId) fbPatientId.value = patientId;
-      document.getElementById('modal-subtitle').textContent = `${name} (${patientId})`;
+      const sessionLabel = (btn.textContent.match(/session (\d+ of \d+)/i) || [])[1];
+      document.getElementById('modal-subtitle').textContent = [name, patientId, sessionLabel && `Session ${sessionLabel}`].filter(Boolean).join(' · ');
       const fbVisit = document.getElementById('fb-visit-id');
       if (fbVisit) fbVisit.value = '';
       renderFeedbackForm();
@@ -699,8 +760,8 @@ function attachCardEvents() {
       const instructions = btn.dataset.instructions;
 
       document.getElementById('edit-allotment-case-id').value = caseId;
-      document.getElementById('edit-allotment-patient-name').textContent = `${name} (${patientId})`;
-      document.getElementById('edit-allotment-progress-info').textContent = `Completed ${completed} of ${allotted} Sessions`;
+      document.getElementById('edit-allotment-patient-name').textContent = `${name} · ${patientId}`;
+      document.getElementById('edit-allotment-progress-info').textContent = `${completed} of ${allotted} sessions completed`;
       const countInput = document.getElementById('edit-allotment-count');
       countInput.value = allotted;
       countInput.min = completed || 1;
@@ -711,7 +772,7 @@ function attachCardEvents() {
       const physioSelect = document.getElementById('edit-allotment-physio');
       if (physioSelect) {
         // Only physios and doctors can be given a case (the server enforces the same).
-        physioSelect.innerHTML = '<option value="">-- Open Task (Unassigned Pool) --</option>' +
+        physioSelect.innerHTML = '<option value="">Open for any physio</option>' +
           team
             .filter((m) => m.role === 'external_physio' || m.role === 'clp_doctor')
             .map((m) => `<option value="${escapeHtml(m.username)}" ${m.username === physio ? 'selected' : ''}>${escapeHtml(m.name)} (${escapeHtml(roleLabel(m.role))})</option>`)
@@ -802,13 +863,31 @@ function questionHtml(q) {
   return `<div class="fq" data-question="${escapeHtml(q.id)}">${title}${body}</div>`;
 }
 
+// Short answers (date, time, numbers) sit side by side so the form isn't one long column.
+const COMPACT_TYPES = ['date', 'time', 'number'];
+function questionsHtml(questions) {
+  const out = [];
+  let row = [];
+  const flush = () => {
+    if (row.length > 1) out.push(`<div class="fq-row">${row.join('')}</div>`);
+    else out.push(...row);
+    row = [];
+  };
+  questions.forEach((q) => {
+    if (COMPACT_TYPES.includes(q.type)) row.push(questionHtml(q));
+    else { flush(); out.push(questionHtml(q)); }
+  });
+  flush();
+  return out.join('');
+}
+
 function renderFeedbackForm() {
   if (!fbQuestions) return;
   fbQuestions.innerHTML = (questionnaire.sections || []).map((section) => `
     <section class="fq-section">
       <div class="fb-section-title"><span>${escapeHtml(section.title)}</span></div>
       ${section.description ? `<p class="fq-section-desc">${escapeHtml(section.description)}</p>` : ''}
-      ${section.questions.map(questionHtml).join('')}
+      ${questionsHtml(section.questions)}
     </section>`).join('');
   if (fbConfirm) fbConfirm.checked = false;
   const confirmText = document.getElementById('fb-confirm-text');
@@ -1034,7 +1113,7 @@ if (allotForm) {
       allotModal.hidden = true;
       await loadCases();
     } catch (err) {
-      alert(`Case enrollment failed: ${err.message}`);
+      notify(`Case enrollment failed: ${err.message}`);
     } finally {
       if (submitBtn) {
         submitBtn.disabled = false;
@@ -1069,7 +1148,7 @@ if (lookupForm) {
             ${p.bloodGroup ? `<span><svg class="icon-inline" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z"/></svg> Blood Group: ${escapeHtml(p.bloodGroup)}</span>` : ''}
           </div>
           ${p.notes ? `<div class="lookup-notes"><strong>Notes:</strong> ${escapeHtml(p.notes)}</div>` : ''}
-          <button class="pill-btn btn-enroll-now" style="margin-top:10px">Enrol in Home-Visit Case</button>
+          <button class="pill-btn btn-enroll-now">Enroll this patient</button>
         </div>
       `;
 
@@ -1089,7 +1168,7 @@ if (lookupForm) {
           startDateInput.min = todayInputValue();
           startDateInput.value = `${tomorrow.getFullYear()}-${String(tomorrow.getMonth() + 1).padStart(2, '0')}-${String(tomorrow.getDate()).padStart(2, '0')}`;
         }
-        document.getElementById('allot-modal-subtitle').textContent = `Enroll ${p.name} (${p.id})`;
+        document.getElementById('allot-modal-subtitle').textContent = `${p.name} · ${p.id}`;
         allotModal.hidden = false;
       });
     } catch (err) {
@@ -1106,7 +1185,7 @@ async function loadTeam() {
   const allotPhysioSelect = document.getElementById('allot-physio');
   if (allotPhysioSelect) {
     const physios = team.filter((m) => m.role === 'external_physio' || !m.role);
-    allotPhysioSelect.innerHTML = '<option value="">-- Open Task (Unassigned Pool) --</option>' +
+    allotPhysioSelect.innerHTML = '<option value="">Open for any physio</option>' +
       physios.map((m) => `<option value="${m.username}">${m.name}</option>`).join('');
   }
 }
@@ -1213,13 +1292,24 @@ function visitFlags(v, today) {
   return flags;
 }
 
+// System notes are stored with raw values ("physio_jane", "2026-09-25 at 08:00", "(DAILY)").
+const PATTERN_WORDS = { DAILY: 'every day', MWF: 'Mon/Wed/Fri', TTS: 'Tue/Thu/Sat', WEEKDAYS: 'weekdays' };
+function readableNote(note) {
+  if (!note) return note;
+  return note
+    .replace(/\b(\d{4}-\d{2}-\d{2})(?: at)? (\d{2}:\d{2})\b/g, (m, d, t) => `${new Date(`${d}T00:00:00`).toLocaleDateString([], { day: 'numeric', month: 'short' })}, ${prettyTime(t)}`)
+    .replace(/\(([A-Z_]+)\)/g, (m, p) => (PATTERN_WORDS[p] ? `(${PATTERN_WORDS[p]})` : m))
+    .replace(/\b[a-z]+_[a-z]+\b/g, (u) => teamMemberName(u))
+    .replace(' (case taken/assigned)', '');
+}
+
 function timelineHtml(v) {
   const items = (v.statusHistory || []).map((h) => {
     const when = new Date(h.timestamp).toLocaleString([], { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' });
     const where = h.coords
       ? ` · <a href="https://maps.google.com/?q=${h.coords.lat},${h.coords.lng}" target="_blank" rel="noopener">check-in location${h.coords.accuracy ? ` (±${h.coords.accuracy} m)` : ''}</a>`
       : '';
-    const extra = [h.note, h.reason && `Reason: ${h.reason}`].filter(Boolean).map(escapeHtml).join(' · ');
+    const extra = [readableNote(h.note), h.reason && `Reason: ${h.reason}`].filter(Boolean).map(escapeHtml).join(' · ');
     return `<li><strong>${escapeHtml(HISTORY_LABELS[h.step] || h.step)}</strong> <span>${escapeHtml(when)} · ${escapeHtml(teamMemberName(h.user) || h.user || '')}</span>${where}${extra ? `<div class="visit-tl-extra">${extra}</div>` : ''}</li>`;
   }).join('');
   const open = openTimelines.has(v.id) ? ' open' : '';
@@ -1315,11 +1405,14 @@ function renderVisits(data) {
             ${flags.length && staff ? `<div class="visit-flags-row">${flags.map((fl) => `<span class="visit-flag flag-${fl.key}">${escapeHtml(fl.label)}</span>`).join('')}</div>` : ''}
             ${req ? `<div class="visit-request">Asked to move to <strong>${escapeHtml(prettyDate(req.newDate, today))}, ${escapeHtml(prettyTime(req.newTime))}</strong> · ${escapeHtml(req.reason || '')}</div>` : ''}
             ${v.cancellationReason && ['cancelled', 'no_show'].includes(v.status) ? `<div class="visit-request">Reason: ${escapeHtml(v.cancellationReason)}</div>` : ''}
-            <div class="visit-actions">
-              ${v.patientMobile ? `<a class="contact-btn" href="tel:${escapeHtml(v.patientMobile)}">Call</a>` : ''}
-              ${v.address ? `<a class="contact-btn" href="${mapUrl}" target="_blank" rel="noopener">Map</a>` : ''}
-              ${visitActionsHtml(v, today)}
-            </div>
+            ${(() => {
+              const actions = [
+                v.patientMobile ? `<a class="contact-btn" href="tel:${escapeHtml(v.patientMobile)}">Call</a>` : '',
+                v.address ? `<a class="contact-btn" href="${mapUrl}" target="_blank" rel="noopener">Map</a>` : '',
+                visitActionsHtml(v, today),
+              ].join('').trim();
+              return actions ? `<div class="visit-actions">${actions}</div>` : '';
+            })()}
             ${timelineHtml(v)}
           </article>`;
       }).join('')}
@@ -1360,10 +1453,10 @@ function openNotesForVisit(visit) {
 // ----- the small visit window (reschedule / change time / cancel / no-show / decline) -----
 const VISIT_MODAL_MODES = {
   request: { title: 'Ask to reschedule', when: true, reason: 'Why does it need to move?', reasonRequired: true, submit: 'Send request' },
-  edit: { title: 'Change date/time', when: true, reason: 'Note (optional)', reasonRequired: false, submit: 'Save' },
+  edit: { title: 'Change date/time', when: true, reason: 'Note', reasonRequired: false, submit: 'Save new time' },
   cancel: { title: 'Cancel visit', when: false, reason: 'Why is it cancelled?', reasonRequired: true, submit: 'Cancel visit' },
   no_show: { title: 'Patient not available', when: false, reason: 'What happened?', reasonRequired: true, submit: 'Save' },
-  decline: { title: 'Decline reschedule', when: false, reason: 'Note for the physio (optional)', reasonRequired: false, submit: 'Decline' },
+  decline: { title: 'Decline reschedule', when: false, reason: 'Note for the physio', reasonRequired: false, submit: 'Decline' },
 };
 let visitModalState = null;
 
@@ -1371,14 +1464,16 @@ function openVisitModal(mode, visit) {
   const cfg = VISIT_MODAL_MODES[mode];
   visitModalState = { mode, visit };
   document.getElementById('visit-modal-title').textContent = cfg.title;
-  document.getElementById('visit-modal-subtitle').textContent = `${visit.patientName} · Visit ${visit.visitNumber} · ${visit.scheduledDate} ${visit.scheduledTime}`;
+  document.getElementById('visit-modal-subtitle').textContent = `${visit.patientName} · Visit ${visit.visitNumber} · ${prettyDate(visit.scheduledDate, todayInputValue())}, ${prettyTime(visit.scheduledTime)}`;
   document.getElementById('visit-form-when').hidden = !cfg.when;
   const date = document.getElementById('visit-form-date');
   const time = document.getElementById('visit-form-time');
   date.value = visit.scheduledDate;
   date.min = todayInputValue();
   time.value = visit.scheduledTime;
-  document.getElementById('visit-form-reason-label').textContent = cfg.reason;
+  const reasonLabel = document.getElementById('visit-form-reason-label');
+  reasonLabel.textContent = cfg.reason;
+  if (!cfg.reasonRequired) reasonLabel.insertAdjacentHTML('beforeend', ' <span class="field-hint">optional</span>');
   document.getElementById('visit-form-reason').value = '';
   document.getElementById('visit-form-submit').textContent = cfg.submit;
   document.getElementById('visit-form-error').textContent = '';
@@ -1465,7 +1560,7 @@ if (visitsListEl) {
       }
       await refreshAfterVisitChange();
     } catch (err) {
-      alert(err.message || 'Could not update the visit');
+      notify(err.message || 'Could not update the visit');
     } finally {
       btn.disabled = false;
     }
@@ -1749,9 +1844,17 @@ const profNewPass = document.getElementById('prof-new-pass');
 const btnDeleteAccount = document.getElementById('btn-delete-account');
 
 if (profileSettingsBtn) {
-  profileSettingsBtn.addEventListener('click', () => {
+  profileSettingsBtn.addEventListener('click', async () => {
     if (profName) profName.value = currentUserName || '';
     if (profileModal) profileModal.hidden = false;
+    try {
+      const me = await api('/api/me/profile');
+      if (profName) profName.value = me.name || currentUserName || '';
+      if (profEmail) profEmail.value = me.email || '';
+      if (profPhone) profPhone.value = me.phone || '';
+    } catch (err) {
+      notify(`Couldn't load your details: ${err.message}`);
+    }
   });
 }
 
@@ -1776,9 +1879,9 @@ if (profileEditForm) {
       if (whoEl) whoEl.textContent = currentUserName;
       if (avatarInitials) avatarInitials.textContent = (currentUserName || 'U').charAt(0).toUpperCase();
       if (profileModal) profileModal.hidden = true;
-      alert('Profile details updated successfully!');
+      notify('Details saved');
     } catch (err) {
-      alert(`Failed to update profile: ${err.message}`);
+      notify(`Failed to update profile: ${err.message}`);
     }
   });
 }
@@ -1796,25 +1899,25 @@ if (profilePasswordForm) {
       profOldPass.value = '';
       profNewPass.value = '';
       if (profileModal) profileModal.hidden = true;
-      alert('Password changed successfully!');
+      notify('Password changed');
     } catch (err) {
-      alert(`Password change failed: ${err.message}`);
+      notify(`Password change failed: ${err.message}`);
     }
   });
 }
 
 if (btnDeleteAccount) {
   btnDeleteAccount.addEventListener('click', async () => {
-    const confirmDelete = confirm(`Are you sure you want to PERMANENTLY delete your account (${currentUser})? This action cannot be undone.`);
+    const confirmDelete = await confirmDialog({ title: 'Delete your account?', body: `Your CareBridge account (${currentUser}) will be permanently removed. This can't be undone.`, confirmLabel: 'Delete account', danger: true });
     if (!confirmDelete) return;
 
     try {
       await api('/api/me', { method: 'DELETE' });
       if (profileModal) profileModal.hidden = true;
-      alert('Your account has been deleted.');
+      notify('Your account has been deleted');
       showLogin();
     } catch (err) {
-      alert(`Account deletion failed: ${err.message}`);
+      notify(`Account deletion failed: ${err.message}`);
     }
   });
 }
@@ -1864,7 +1967,7 @@ function renderTeamList() {
   }
 
   if (filtered.length === 0) {
-    teamMembersList.innerHTML = `<div class="empty-card" style="padding:20px"><p>No team accounts matching search.</p></div>`;
+    teamMembersList.innerHTML = `<p class="session-hint">No one matches that search.</p>`;
     return;
   }
 
@@ -1872,8 +1975,8 @@ function renderTeamList() {
     <div class="team-member-card">
       <div class="team-member-info">
         <div class="team-member-name-row">
-          <span class="team-member-name">${member.name}</span>
-          <span class="team-member-username">@${member.username}</span>
+          <span class="team-member-name">${escapeHtml(member.name)}</span>
+          <span class="team-member-username">@${escapeHtml(member.username)}</span>
           <span class="role-badge role-${member.role || 'external_physio'}">${roleLabel(member.role)}</span>
         </div>
         <div class="team-member-contact">
@@ -1884,12 +1987,12 @@ function renderTeamList() {
       <div class="team-card-actions">
         <button type="button" class="btn-icon-action btn-edit-team-member" data-username="${member.username}">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-          <span>Edit Profile</span>
+          <span>Edit</span>
         </button>
-        <button type="button" class="btn-icon-action danger btn-delete-team-member" data-username="${member.username}">
+        ${member.username === currentUser ? '<span class="team-you">You</span>' : `        <button type="button" class="btn-icon-action danger btn-delete-team-member" data-username="${member.username}">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
           <span>Delete</span>
-        </button>
+        </button>`}
       </div>
     </div>
   `).join('');
@@ -1905,7 +2008,7 @@ function renderTeamList() {
       editTeamEmail.value = member.email || '';
       editTeamPhone.value = member.phone || '';
       editTeamPassword.value = '';
-      document.getElementById('team-edit-subtitle').textContent = `Modify details for @${member.username}`;
+      document.getElementById('team-edit-subtitle').textContent = `@${member.username}`;
       if (teamEditModal) teamEditModal.hidden = false;
     });
   });
@@ -1914,18 +2017,18 @@ function renderTeamList() {
     btn.addEventListener('click', async () => {
       const uname = btn.dataset.username;
       if (uname === currentUser) {
-        alert("You cannot delete your active account from team manager. Use 'My Profile' settings.");
+        notify("You can't delete your own account here. Use My account instead.", 'bad');
         return;
       }
-      const confirmDel = confirm(`Are you sure you want to PERMANENTLY delete team account @${uname}?`);
+      const confirmDel = await confirmDialog({ title: `Delete ${teamMemberName(uname)}?`, body: `The account @${uname} will be permanently removed and can no longer sign in. This can't be undone.`, confirmLabel: 'Delete account', danger: true });
       if (!confirmDel) return;
       try {
         await api(`/api/team/${encodeURIComponent(uname)}`, { method: 'DELETE' });
-        alert(`Account @${uname} has been deleted.`);
+        notify(`@${uname} deleted`);
         await loadTeam();
         renderTeamList();
       } catch (err) {
-        alert(`Delete error: ${err.message}`);
+        notify(`Delete error: ${err.message}`);
       }
     });
   });
@@ -1980,7 +2083,7 @@ if (teamCreateForm) {
         method: 'POST',
         body: JSON.stringify({ name, username, password, role, email, phone }),
       });
-      alert(`Team member @${username} created successfully!`);
+      notify(`@${username} added`);
       if (teamCreateModal) teamCreateModal.hidden = true;
       await loadTeam();
       renderTeamList();
@@ -2013,11 +2116,11 @@ if (teamEditForm) {
         body: JSON.stringify({ name, role, email, phone, password: password || undefined }),
       });
       if (teamEditModal) teamEditModal.hidden = true;
-      alert(`Account @${uname} updated successfully!`);
+      notify(`@${uname} updated`);
       await loadTeam();
       renderTeamList();
     } catch (err) {
-      alert(`Update failed: ${err.message}`);
+      notify(`Update failed: ${err.message}`);
     } finally {
       submitBtn.disabled = false;
     }
