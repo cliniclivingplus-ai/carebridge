@@ -632,6 +632,42 @@ app.get('/api/cases', requireAuth, async (req, res) => {
   }
 });
 
+// POST /api/cases/:id/allotment & PATCH /api/cases/:id/allotment (Edit session allotment for an existing case)
+const handleCaseAllotmentUpdate = async (req, res) => {
+  const { allottedSessions, assignedPhysio, instructions } = req.body || {};
+  try {
+    const existingCase = await cases.getCase(req.params.id);
+    if (!existingCase) return res.status(404).json({ error: 'Case not found' });
+
+    const updatedCase = await cases.updateCaseAllotted(req.params.id, {
+      allottedSessions,
+      assignedPhysio,
+      instructions,
+    });
+
+    if (assignedPhysio !== undefined) {
+      await visits.assignVisitsToPhysio(req.params.id, assignedPhysio);
+    }
+
+    if (allottedSessions !== undefined && updatedCase.patientId) {
+      await plans.updateAllotted(
+        updatedCase.patientId,
+        updatedCase.allottedSessions,
+        updatedCase.assignedPhysio,
+        updatedCase.instructions,
+        req.session.user.username
+      ).catch(() => {});
+    }
+
+    res.json({ ok: true, case: caseForViewer(req.session.user, updatedCase) });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+};
+
+app.post('/api/cases/:id/allotment', requireAuth, requireRole(['sales', 'clp_doctor']), handleCaseAllotmentUpdate);
+app.patch('/api/cases/:id/allotment', requireAuth, requireRole(['sales', 'clp_doctor']), handleCaseAllotmentUpdate);
+
 // GET /api/cases/:id (Get case details and session history)
 app.get('/api/cases/:id', requireAuth, async (req, res) => {
   try {

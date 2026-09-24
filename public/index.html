@@ -350,6 +350,55 @@
     </div>
   </div>
 
+  <!-- Edit Allotment Modal (Sales & CLP Doctor Only) -->
+  <div id="edit-allotment-modal" class="modal-backdrop" hidden>
+    <div class="modal-card glass-card">
+      <div class="modal-header">
+        <div>
+          <h3>Edit Session Allotment</h3>
+          <p id="edit-allotment-modal-subtitle">Update session count, physio assignment &amp; care notes</p>
+        </div>
+        <button id="close-edit-allotment-modal" class="close-btn" type="button">&times;</button>
+      </div>
+
+      <form id="edit-allotment-form">
+        <input type="hidden" id="edit-allotment-case-id" />
+        
+        <div class="patient-summary-banner" style="background: rgba(255, 255, 255, 0.05); padding: 12px 16px; border-radius: 8px; margin-bottom: 16px; border: 1px solid rgba(255,255,255,0.1);">
+          <div style="font-weight: 600; font-size: 15px;" id="edit-allotment-patient-name">Patient Name</div>
+          <div style="font-size: 13px; color: var(--text-muted); margin-top: 2px;" id="edit-allotment-progress-info">Completed 0 of 10 Sessions</div>
+        </div>
+
+        <div class="input-group">
+          <label for="edit-allotment-count">Total Allotted Sessions Count</label>
+          <input type="number" id="edit-allotment-count" min="1" max="100" required />
+          <span style="font-size: 12px; color: var(--text-muted); margin-top: 4px; display: block;">Must be equal to or greater than completed sessions count.</span>
+        </div>
+
+        <div class="input-group">
+          <label for="edit-allotment-physio">Assign / Reassign Physio (Optional)</label>
+          <select id="edit-allotment-physio">
+            <option value="">-- Open Task (Unassigned Pool) --</option>
+          </select>
+        </div>
+
+        <div class="input-group">
+          <label for="edit-allotment-instructions">Special Instructions &amp; Care Plan Notes</label>
+          <textarea id="edit-allotment-instructions" rows="3" placeholder="Special instructions for visits"></textarea>
+        </div>
+
+        <p id="edit-allotment-error" class="error"></p>
+
+        <div style="display: flex; gap: 12px; justify-content: flex-end; margin-top: 20px;">
+          <button type="button" id="cancel-edit-allotment" class="btn-secondary">Cancel</button>
+          <button type="submit" class="btn-primary">
+            <span>Save Allotment Changes</span>
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
   <!-- Profile & Account Settings Modal -->
   <div id="profile-modal" class="modal-backdrop" hidden>
     <div class="modal-card glass-card">

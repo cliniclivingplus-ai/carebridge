@@ -470,7 +470,7 @@ function renderCasesList(casesList) {
           <div class="session-progress-fill" style="width: ${pct}%;"></div>
         </div>
         ${canEditAllotment ? `
-          <button class="btn-allot-sessions" data-patient-id="${item.patientId || ''}" data-allotted="${allotted}" data-name="${item.patientName || 'Patient'}">
+          <button class="btn-allot-sessions" data-case-id="${item.id}" data-patient-id="${item.patientId || ''}" data-allotted="${allotted}" data-completed="${completed}" data-name="${escapeHtml(item.patientName || 'Patient')}" data-physio="${escapeHtml(item.assignedPhysio || '')}" data-instructions="${escapeHtml(item.instructions || '')}">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v8"/><path d="M8 12h8"/></svg>
             <span>Edit Allotment</span>
           </button>
@@ -619,7 +619,37 @@ function attachCardEvents() {
       document.getElementById('modal-subtitle').textContent = `${name} (${patientId})`;
       renderFeedbackForm();
 
-      if (feedbackModal) feedbackModal.hidden = false;
+  // Open Edit Allotment Modal
+  listEl.querySelectorAll('.btn-allot-sessions').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const caseId = btn.dataset.caseId;
+      const patientId = btn.dataset.patientId;
+      const allotted = btn.dataset.allotted;
+      const completed = btn.dataset.completed;
+      const name = btn.dataset.name;
+      const physio = btn.dataset.physio;
+      const instructions = btn.dataset.instructions;
+
+      document.getElementById('edit-allotment-case-id').value = caseId;
+      document.getElementById('edit-allotment-patient-name').textContent = `${name} (${patientId})`;
+      document.getElementById('edit-allotment-progress-info').textContent = `Completed ${completed} of ${allotted} Sessions`;
+      const countInput = document.getElementById('edit-allotment-count');
+      countInput.value = allotted;
+      countInput.min = completed || 1;
+      document.getElementById('edit-allotment-instructions').value = instructions || '';
+      document.getElementById('edit-allotment-error').textContent = '';
+
+      // Populate Physio select options
+      const physioSelect = document.getElementById('edit-allotment-physio');
+      if (physioSelect) {
+        physioSelect.innerHTML = '<option value="">-- Open Task (Unassigned Pool) --</option>' +
+          teamMembers
+            .map((m) => `<option value="${escapeHtml(m.username)}" ${m.username === physio ? 'selected' : ''}>${escapeHtml(m.name)} (${m.role})</option>`)
+            .join('');
+      }
+
+      const editAllotmentModal = document.getElementById('edit-allotment-modal');
+      if (editAllotmentModal) editAllotmentModal.hidden = false;
     });
   });
 }
@@ -1296,6 +1326,46 @@ if (logoutBtn) {
     } finally {
       showLogin();
       window.location.reload();
+    }
+  });
+}
+
+// Edit Allotment Modal Listeners
+const editAllotmentModal = document.getElementById('edit-allotment-modal');
+const closeEditAllotmentModalBtn = document.getElementById('close-edit-allotment-modal');
+const cancelEditAllotmentBtn = document.getElementById('cancel-edit-allotment');
+const editAllotmentForm = document.getElementById('edit-allotment-form');
+const editAllotmentError = document.getElementById('edit-allotment-error');
+
+function closeEditAllotmentModal() {
+  if (editAllotmentModal) editAllotmentModal.hidden = true;
+}
+
+if (closeEditAllotmentModalBtn) closeEditAllotmentModalBtn.addEventListener('click', closeEditAllotmentModal);
+if (cancelEditAllotmentBtn) cancelEditAllotmentBtn.addEventListener('click', closeEditAllotmentModal);
+
+if (editAllotmentForm) {
+  editAllotmentForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    if (editAllotmentError) editAllotmentError.textContent = '';
+    const caseId = document.getElementById('edit-allotment-case-id').value;
+    const count = parseInt(document.getElementById('edit-allotment-count').value, 10);
+    const physio = document.getElementById('edit-allotment-physio').value;
+    const instructions = document.getElementById('edit-allotment-instructions').value;
+
+    try {
+      await api(`/api/cases/${encodeURIComponent(caseId)}/allotment`, {
+        method: 'PATCH',
+        body: JSON.stringify({
+          allottedSessions: count,
+          assignedPhysio: physio || null,
+          instructions: instructions || '',
+        }),
+      });
+      closeEditAllotmentModal();
+      await loadCases();
+    } catch (err) {
+      if (editAllotmentError) editAllotmentError.textContent = err.message;
     }
   });
 }
