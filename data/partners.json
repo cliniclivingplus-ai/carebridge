@@ -6,7 +6,7 @@
     "email": "sales@example.com",
     "phone": "+910000000000",
     "allowedPatientIds": [],
-    "passwordHash": "$2a$10$EZDc6SNFYaXGBuoaeRtrF.F88iR1saUXc5zfzTuyhi/fEWcpyDiE6"
+    "passwordHash": "$2a$10$fqIFXyOJt5O1nVloefGvKuhnzdRW2W7wWzyp1t2AWPWo6zGoyRZAe"
   },
   {
     "username": "dr_ritika",
@@ -15,7 +15,7 @@
     "email": "dr.ritika@example.com",
     "phone": "+910000000099",
     "allowedPatientIds": [],
-    "passwordHash": "$2a$10$EZDc6SNFYaXGBuoaeRtrF.F88iR1saUXc5zfzTuyhi/fEWcpyDiE6"
+    "passwordHash": "$2a$10$jHdRe0s6uF29.NEzTPEno.8qrQDcuYZHrnFFuHSvkL2.EREL9NN22"
   },
   {
     "username": "physio_jane",
@@ -24,7 +24,7 @@
     "email": "jane.demo@example.com",
     "phone": "+910000000001",
     "allowedPatientIds": [],
-    "passwordHash": "$2a$10$EZDc6SNFYaXGBuoaeRtrF.F88iR1saUXc5zfzTuyhi/fEWcpyDiE6"
+    "passwordHash": "$2a$10$F6CzVLCZ9wIEzKtUXQwRreAeD59y1M2omLJKx1r5CG6tMPX8oDGcW"
   },
   {
     "username": "physio_raj",
@@ -33,7 +33,7 @@
     "email": "raj.demo@example.com",
     "phone": "+910000000002",
     "allowedPatientIds": [],
-    "passwordHash": "$2a$10$EZDc6SNFYaXGBuoaeRtrF.F88iR1saUXc5zfzTuyhi/fEWcpyDiE6"
+    "passwordHash": "$2a$10$YHaWMbwFA/1q/gumRcJf9.rr7OZq8.hcitJrT3P8jSHc63RFnnVW."
   },
   {
     "username": "physio_meera",
@@ -42,6 +42,6 @@
     "email": "meera.demo@example.com",
     "phone": "+910000000003",
     "allowedPatientIds": [],
-    "passwordHash": "$2a$10$EZDc6SNFYaXGBuoaeRtrF.F88iR1saUXc5zfzTuyhi/fEWcpyDiE6"
+    "passwordHash": "$2a$10$kQiAGvXFBo.H.OuZJgYw3eYiFnfeRUXQDtCNO/twgMIk0AFzoh.EG"
   }
 ]

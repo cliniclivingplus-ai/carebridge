@@ -11,3 +11,4 @@ scratch/
 
 
 .env.vercel
+data/visits.json
