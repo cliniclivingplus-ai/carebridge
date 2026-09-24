@@ -937,7 +937,11 @@ if (feedbackForm) {
     e.preventDefault();
     const caseId = fbCaseId.value;
     const submitBtn = feedbackForm.querySelector('button[type="submit"]');
-    submitBtn.disabled = true;
+    const origHtml = submitBtn ? submitBtn.innerHTML : '';
+    if (submitBtn) {
+      submitBtn.disabled = true;
+      submitBtn.innerHTML = '<span>Saving Session...</span>';
+    }
 
     const { payload, error, element } = collectFeedback();
     const fbVisit = document.getElementById('fb-visit-id');
@@ -949,7 +953,10 @@ if (feedbackForm) {
         element.scrollIntoView({ behavior: 'smooth', block: 'center' });
         setTimeout(() => element.classList.remove('fq-missing'), 2500);
       }
-      submitBtn.disabled = false;
+      if (submitBtn) {
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = origHtml;
+      }
       return;
     }
     if (fbError) fbError.textContent = '';
@@ -962,11 +969,13 @@ if (feedbackForm) {
 
       feedbackModal.hidden = true;
       await loadCases();
-      alert('Session assessment saved.');
     } catch (err) {
       if (fbError) fbError.textContent = err.message;
     } finally {
-      submitBtn.disabled = false;
+      if (submitBtn) {
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = origHtml;
+      }
     }
   });
 }
@@ -991,7 +1000,11 @@ if (allotForm) {
     const pattern = document.getElementById('allot-pattern')?.value || 'MWF';
 
     const submitBtn = allotForm.querySelector('button[type="submit"]');
-    submitBtn.disabled = true;
+    const origHtml = submitBtn ? submitBtn.innerHTML : '';
+    if (submitBtn) {
+      submitBtn.disabled = true;
+      submitBtn.innerHTML = '<span>Publishing Open Task...</span>';
+    }
 
     try {
       await api('/api/cases', {
@@ -1014,11 +1027,13 @@ if (allotForm) {
 
       allotModal.hidden = true;
       await loadCases();
-      alert(`Patient ${patientName} (${patientId}) enrolled successfully as a Home-Visit Case with a ${allottedSessions}-visit ${pattern} schedule!`);
     } catch (err) {
       alert(`Case enrollment failed: ${err.message}`);
     } finally {
-      submitBtn.disabled = false;
+      if (submitBtn) {
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = origHtml;
+      }
     }
   });
 }

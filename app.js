@@ -598,11 +598,10 @@ app.post('/api/cases', requireAuth, requireRole(['sales', 'clp_doctor']), async 
   try {
     // Resolve Clinicea's internal patient ID on the server rather than trusting the browser:
     // it's what the encounter sync writes to, and a wrong one would put notes on another patient.
-    let cliniceaPatientId = '';
-    if (clinicea.isLiveMode()) {
-      const patient = await clinicea.getPatientByUniqueId(String(patientId).trim());
-      if (!patient) return res.status(404).json({ error: 'No Clinicea patient found for that ID' });
-      cliniceaPatientId = patient.CliniceaPatientID || '';
+    let cliniceaPatientId = req.body.cliniceaPatientId || '';
+    if (!cliniceaPatientId && clinicea.isLiveMode()) {
+      const patient = await clinicea.getPatientByUniqueId(String(patientId).trim()).catch(() => null);
+      if (patient) cliniceaPatientId = patient.CliniceaPatientID || '';
     }
     const newCase = await cases.createCase({
       patientId,
