@@ -11,7 +11,7 @@
 </head>
 <body>
   <!-- Auth Screen -->
-  <div id="login-screen" class="screen">
+  <div id="login-screen" class="screen" hidden>
     <div class="login-background-glow"></div>
     <div class="card glass-card login-card">
       <div class="brand-badge">
@@ -652,6 +652,21 @@
     </div>
   </div>
 
+  <script>
+    (function() {
+      try {
+        var raw = localStorage.getItem('carebridge_user');
+        if (raw) {
+          var data = JSON.parse(raw);
+          if (data && data.user) {
+            document.getElementById('app-screen').hidden = false;
+            return;
+          }
+        }
+      } catch (e) {}
+      document.getElementById('login-screen').hidden = false;
+    })();
+  </script>
   <script src="app.js"></script>
 </body>
 </html>

@@ -163,6 +163,9 @@ function updateFilterChipLabels(labels) {
 }
 
 function showApp(userObj, liveMode) {
+  try {
+    localStorage.setItem('carebridge_user', JSON.stringify({ user: userObj, liveMode }));
+  } catch (e) {}
   loginScreen.hidden = true;
   appScreen.hidden = false;
   currentUser = userObj.username;
@@ -252,6 +255,9 @@ function showApp(userObj, liveMode) {
 }
 
 function showLogin() {
+  try {
+    localStorage.removeItem('carebridge_user');
+  } catch (e) {}
   loginScreen.hidden = false;
   appScreen.hidden = true;
   currentUser = null;
@@ -1640,6 +1646,22 @@ loginForm.addEventListener('submit', async (e) => {
 });
 
 (async function init() {
+  let hasCachedUser = false;
+  try {
+    const raw = localStorage.getItem('carebridge_user');
+    if (raw) {
+      const data = JSON.parse(raw);
+      if (data && data.user) {
+        showApp(data.user, data.liveMode);
+        hasCachedUser = true;
+      }
+    }
+  } catch (e) {}
+
+  if (!hasCachedUser) {
+    showLogin();
+  }
+
   try {
     const me = await api('/api/me');
     const demoPill = document.getElementById('demo-accounts-pill');
@@ -1653,13 +1675,16 @@ loginForm.addEventListener('submit', async (e) => {
       showLogin();
     }
   } catch (err) {
-    showLogin();
+    if (!hasCachedUser) {
+      showLogin();
+    }
   }
 })();
 
 if (logoutBtn) {
   logoutBtn.addEventListener('click', async () => {
     try {
+      localStorage.removeItem('carebridge_user');
       await api('/api/logout', { method: 'POST' });
     } catch (err) {
       console.warn('Logout API warning:', err);
