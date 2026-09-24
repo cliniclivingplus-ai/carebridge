@@ -2219,3 +2219,264 @@ body {
 .chip-icon, .icon-inline, .icon-sm { flex-shrink: 0; vertical-align: -2px; }
 
 .chip { display: inline-flex; align-items: center; gap: 6px; }
+
+/* ---------- Visits panel (schedule, lifecycle, monitoring) ---------- */
+.visits-section {
+  margin-bottom: 24px;
+  padding: 20px;
+}
+
+.visits-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.visits-head h3 {
+  margin: 0;
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: var(--text-main);
+}
+
+.visits-range {
+  display: inline-flex;
+  padding: 3px;
+  border-radius: 999px;
+  background: var(--border);
+}
+
+.visits-range-btn {
+  min-height: 34px;
+  padding: 6px 14px;
+  border: none;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.visits-range-btn.active {
+  background: var(--surface);
+  color: var(--text-main);
+  box-shadow: var(--shadow-sm);
+}
+
+.visits-flags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.visits-empty {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 14px;
+}
+
+.visits-day + .visits-day {
+  margin-top: 16px;
+}
+
+.visits-day-title {
+  margin: 0 0 8px;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.visit-card {
+  margin-bottom: 10px;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+}
+
+.visit-card.has-flags {
+  border-left: 4px solid var(--pending-text);
+}
+
+.visit-card-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.visit-time {
+  flex-shrink: 0;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: var(--primary-light);
+  color: var(--primary-dark);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.visit-who {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+}
+
+.visit-who strong {
+  font-size: 15px;
+  overflow-wrap: anywhere;
+}
+
+.visit-who span,
+.visit-address {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.visit-address {
+  margin-top: 6px;
+  overflow-wrap: anywhere;
+}
+
+.visit-status {
+  flex-shrink: 0;
+  padding: 3px 9px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.tone-muted { background: var(--border); color: var(--text-muted); }
+.tone-info { background: var(--accent-indigo-light); color: var(--accent-indigo); }
+.tone-progress { background: var(--primary-light); color: var(--primary-dark); }
+.tone-warn { background: var(--pending-bg); color: var(--pending-text); }
+.tone-ok { background: var(--success-bg); color: var(--success-text); }
+.tone-bad { background: var(--danger-bg); color: var(--danger-text); }
+
+.visit-flags-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.visit-flag {
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: var(--pending-bg);
+  color: var(--pending-text);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.visit-flag.flag-overdue,
+.visit-flag.flag-late {
+  background: var(--danger-bg);
+  color: var(--danger-text);
+}
+
+.visit-request {
+  margin-top: 8px;
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  background: var(--pending-bg);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.visit-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.visit-actions .visit-btn {
+  width: auto;
+  min-height: 40px;
+  padding: 8px 14px;
+  font-size: 13px;
+}
+
+.visit-cancel {
+  color: var(--danger-text);
+  min-height: 40px;
+}
+
+.visit-timeline {
+  margin-top: 10px;
+  font-size: 12px;
+}
+
+.visit-timeline summary {
+  cursor: pointer;
+  color: var(--primary-dark);
+  font-weight: 700;
+  min-height: 24px;
+}
+
+.visit-timeline ol {
+  margin: 8px 0 0;
+  padding-left: 18px;
+  display: grid;
+  gap: 6px;
+}
+
+.visit-timeline li span {
+  color: var(--text-muted);
+}
+
+.visit-tl-extra {
+  color: var(--text-muted);
+  overflow-wrap: anywhere;
+}
+
+.visit-form-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+/* Next appointment on case cards */
+.case-next-visit {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px 12px;
+  margin: 10px 0;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+}
+
+.case-next-visit > div {
+  display: grid;
+}
+
+.case-next-label {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.case-next-meta {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.case-next-alert {
+  color: var(--danger-text);
+  font-weight: 700;
+}

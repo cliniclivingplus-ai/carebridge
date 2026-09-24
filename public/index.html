@@ -191,17 +191,18 @@
         <p id="lookup-error" class="error"></p>
       </section>
 
-      <!-- Today's Visits Schedule (Physio & Clinic Oversight) -->
-      <section id="today-schedule-section" class="today-schedule-section glass-card" style="margin-bottom: 24px; padding: 20px;">
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px;">
-          <div style="display: flex; align-items: center; gap: 8px;">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="18" height="18" x="3" y="4" rx="2" ry="2"/><line x1="16" x2="16" y1="2" y2="6"/><line x1="8" x2="8" y1="2" y2="6"/><line x1="3" x2="21" y1="10" y2="10"/></svg>
-            <h3 style="margin: 0; font-size: 1.1rem; font-weight: 700; color: #0f172a;">Today's Visit Schedule</h3>
+      <!-- Visits: a physio's own schedule, or every visit for Sales/Doctor. Built in app.js. -->
+      <section id="today-schedule-section" class="visits-section glass-card" aria-labelledby="visits-title">
+        <div class="visits-head">
+          <h3 id="visits-title">Visits</h3>
+          <div class="visits-range" role="group" aria-label="Show visits for">
+            <button type="button" class="visits-range-btn active" data-days="1" aria-pressed="true">Today</button>
+            <button type="button" class="visits-range-btn" data-days="7" aria-pressed="false">Next 7 days</button>
           </div>
-          <span id="today-date-badge" class="pill-btn" style="pointer-events: none; background: #e0f2fe; color: #0369a1; font-weight: 600;">Today</span>
         </div>
-        <div id="today-visits-list" class="today-visits-grid">
-          <p style="color: #64748b; font-size: 0.9rem; margin: 0;">Loading today's schedule...</p>
+        <div id="visits-flags" class="visits-flags" hidden></div>
+        <div id="today-visits-list" class="visits-list">
+          <p class="visits-empty">Loading visits…</p>
         </div>
       </section>
 
@@ -236,6 +237,40 @@
     </nav>
   </div>
 
+  <!-- Visit action window: reschedule request, change date/time, cancel / no-show. -->
+  <div id="visit-modal" class="modal-backdrop" hidden>
+    <div class="modal-card glass-card" role="dialog" aria-modal="true" aria-labelledby="visit-modal-title">
+      <div class="modal-header">
+        <div>
+          <h3 id="visit-modal-title">Visit</h3>
+          <p id="visit-modal-subtitle"></p>
+        </div>
+        <button id="close-visit-modal" class="close-btn" type="button" aria-label="Close">&times;</button>
+      </div>
+      <form id="visit-form" novalidate>
+        <div id="visit-form-when" class="visit-form-grid">
+          <div class="input-group">
+            <label for="visit-form-date">Date</label>
+            <input type="date" id="visit-form-date" />
+          </div>
+          <div class="input-group">
+            <label for="visit-form-time">Time</label>
+            <input type="time" id="visit-form-time" />
+          </div>
+        </div>
+        <div class="input-group">
+          <label for="visit-form-reason" id="visit-form-reason-label">Reason</label>
+          <textarea id="visit-form-reason" rows="3" maxlength="500"></textarea>
+        </div>
+        <p id="visit-form-error" class="error" role="alert"></p>
+        <div class="modal-footer">
+          <button type="button" id="visit-form-cancel" class="btn-secondary">Back</button>
+          <button type="submit" id="visit-form-submit" class="btn-primary">Save</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
   <!-- Session assessment modal. The questions are built from lib/feedback-questions.json
        (see renderFeedbackForm in app.js), so they can change without touching this file. -->
   <div id="feedback-modal" class="modal-backdrop" hidden>
@@ -251,6 +286,7 @@
       <form id="feedback-form" novalidate>
         <input type="hidden" id="fb-case-id" />
         <input type="hidden" id="fb-patient-id" />
+        <input type="hidden" id="fb-visit-id" />
 
         <div id="fb-questions"></div>
 

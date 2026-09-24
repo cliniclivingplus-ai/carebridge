@@ -3,10 +3,13 @@
 const { app, seedStoreIfEmpty } = require('./app');
 const db = require('./lib/db');
 const clinicea = require('./lib/clinicea-client');
+const { ensureDatabaseReady } = require('./lib/db-bootstrap');
 
 const PORT = process.env.PORT || 3000;
 
-seedStoreIfEmpty().then(() => {
+// With Postgres, create the tables before seeding them (on Vercel the request middleware in
+// app.js does this; locally the seed runs before any request arrives).
+(db.isConfigured() ? ensureDatabaseReady() : Promise.resolve()).then(seedStoreIfEmpty).then(() => {
   app.listen(PORT, () => {
     console.log(`CareBridge running at http://localhost:${PORT}`);
     console.log(`Data store: ${db.isConfigured() ? 'Postgres' : 'local JSON file'}`);

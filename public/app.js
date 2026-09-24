@@ -418,6 +418,26 @@ function sessionDetailHtml(s, allotted) {
   `;
 }
 
+function visitSummaryHtml(item) {
+  const vs = item.visitSummary;
+  if (!vs || !vs.total) return '';
+  const next = vs.nextVisit;
+  const parts = [`${vs.done} of ${vs.total} visits done`];
+  if (vs.cancelled) parts.push(`${vs.cancelled} cancelled`);
+  if (vs.noShow) parts.push(`${vs.noShow} patient not available`);
+  const alerts = [];
+  if (vs.overdue) alerts.push(`${vs.overdue} overdue`);
+  if (vs.pendingReschedule) alerts.push('reschedule requested');
+  return `
+    <div class="case-next-visit">
+      <div>
+        <span class="case-next-label">Next visit</span>
+        <strong>${next ? `${escapeHtml(new Date(`${next.date}T00:00:00`).toLocaleDateString([], { weekday: 'short', day: 'numeric', month: 'short' }))} · ${escapeHtml(prettyTime(next.time))}` : 'None booked'}</strong>
+      </div>
+      <span class="case-next-meta">${escapeHtml(parts.join(' · '))}${alerts.length ? ` · <span class="case-next-alert">${escapeHtml(alerts.join(', '))}</span>` : ''}</span>
+    </div>`;
+}
+
 function renderCasesList(casesList) {
   listEl.innerHTML = '';
   emptyState.hidden = casesList.length > 0;
@@ -476,6 +496,8 @@ function renderCasesList(casesList) {
           </button>
         ` : ''}
       </div>
+
+      ${visitSummaryHtml(item)}
 
       <div class="contact-strip">
         ${item.patientMobile ? `
@@ -617,7 +639,12 @@ function attachCardEvents() {
       if (fbCaseId) fbCaseId.value = caseId;
       if (fbPatientId) fbPatientId.value = patientId;
       document.getElementById('modal-subtitle').textContent = `${name} (${patientId})`;
+      const fbVisit = document.getElementById('fb-visit-id');
+      if (fbVisit) fbVisit.value = '';
       renderFeedbackForm();
+      if (feedbackModal) feedbackModal.hidden = false;
+    });
+  });
 
   // Open Edit Allotment Modal
   listEl.querySelectorAll('.btn-allot-sessions').forEach((btn) => {
@@ -876,6 +903,8 @@ if (feedbackForm) {
     submitBtn.disabled = true;
 
     const { payload, error, element } = collectFeedback();
+    const fbVisit = document.getElementById('fb-visit-id');
+    if (payload && fbVisit && fbVisit.value) payload.visitId = fbVisit.value;
     if (error) {
       if (fbError) fbError.textContent = error;
       if (element) {
@@ -995,6 +1024,13 @@ if (lookupForm) {
         allotPatientPcode.value = '';
         allotSymptoms.value = p.symptomsConcern || p.notes || '';
         allotCount.value = 10;
+        const startDateInput = document.getElementById('allot-start-date');
+        if (startDateInput) {
+          const tomorrow = new Date();
+          tomorrow.setDate(tomorrow.getDate() + 1);
+          startDateInput.min = todayInputValue();
+          startDateInput.value = `${tomorrow.getFullYear()}-${String(tomorrow.getMonth() + 1).padStart(2, '0')}-${String(tomorrow.getDate()).padStart(2, '0')}`;
+        }
         document.getElementById('allot-modal-subtitle').textContent = `Enroll ${p.name} (${p.id})`;
         allotModal.hidden = false;
       });
@@ -1036,163 +1072,359 @@ async function loadCases() {
   await loadTodayVisits();
 }
 
+// ---------- Visits (schedule, lifecycle, monitoring) ----------
+
+let visitsDays = 1; // 1 = Today, 7 = Next 7 days
+const openTimelines = new Set(); // visit ids whose timeline is expanded (kept across refreshes)
+
+const VISIT_STATUS = {
+  scheduled: { label: 'Waiting for a physio', tone: 'muted' },
+  confirmed: { label: 'Confirmed', tone: 'info' },
+  on_the_way: { label: 'On the way', tone: 'progress' },
+  arrived: { label: 'Arrived', tone: 'progress' },
+  in_session: { label: 'In session', tone: 'progress' },
+  completed: { label: 'Notes due', tone: 'warn' },
+  notes_submitted: { label: 'Done', tone: 'ok' },
+  cancelled: { label: 'Cancelled', tone: 'bad' },
+  no_show: { label: 'Patient not available', tone: 'bad' },
+  reschedule_requested: { label: 'Reschedule requested', tone: 'warn' },
+};
+
+const HISTORY_LABELS = {
+  scheduled: 'Booked',
+  confirmed: 'Confirmed',
+  on_the_way: 'On the way',
+  arrived: 'Arrived',
+  in_session: 'Session started',
+  completed: 'Session finished',
+  notes_submitted: 'Notes submitted',
+  cancelled: 'Cancelled',
+  no_show: 'Patient not available',
+  reschedule_requested: 'Reschedule requested',
+  rescheduled: 'Rescheduled',
+  reschedule_declined: 'Reschedule declined',
+  rebooked: 'Rebooked',
+};
+
+// The one button a physio sees for their visit's next step.
+const NEXT_STEP = {
+  confirmed: { step: 'on_the_way', label: "I'm on my way" },
+  on_the_way: { step: 'arrived', label: "I've arrived" },
+  arrived: { step: 'in_session', label: 'Start session' },
+  in_session: { step: 'completed', label: 'Finish session & write notes' },
+  completed: { step: 'notes', label: 'Write session notes' },
+};
+
+const NOT_STARTED = ['scheduled', 'confirmed'];
+const CLOSED = ['notes_submitted', 'cancelled', 'no_show'];
+
+function nowTimeIST() {
+  return new Date().toLocaleTimeString('en-GB', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit' });
+}
+
+function minutesOf(t) {
+  return parseInt(t.slice(0, 2), 10) * 60 + parseInt(t.slice(3, 5), 10);
+}
+
+function prettyDate(dateStr, today) {
+  const d = new Date(`${dateStr}T00:00:00`);
+  const label = d.toLocaleDateString([], { weekday: 'short', day: 'numeric', month: 'short' });
+  if (dateStr === today) return `Today · ${label}`;
+  const tomorrow = new Date(`${today}T00:00:00`);
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  if (d.getTime() === tomorrow.getTime()) return `Tomorrow · ${label}`;
+  return label;
+}
+
+function prettyTime(t) {
+  return new Date(`1970-01-01T${t}:00`).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+}
+
+// Things Sales/Doctor should look at, worked out from the schedule itself.
+function visitFlags(v, today) {
+  const flags = [];
+  const active = !CLOSED.includes(v.status) && v.status !== 'completed';
+  if (active && v.scheduledDate < today) flags.push({ key: 'overdue', label: 'Overdue' });
+  if (NOT_STARTED.includes(v.status) && v.scheduledDate === today && minutesOf(nowTimeIST()) > minutesOf(v.scheduledTime) + 15) {
+    flags.push({ key: 'late', label: 'Not started yet' });
+  }
+  if (!v.assignedPhysio && active) flags.push({ key: 'unassigned', label: 'No physio' });
+  if (v.status === 'completed') flags.push({ key: 'notes', label: 'Notes not submitted' });
+  if (v.status === 'reschedule_requested') flags.push({ key: 'reschedule', label: 'Needs your decision' });
+  if (v.overlapWarning) flags.push({ key: 'overlap', label: 'Overlaps another visit' });
+  return flags;
+}
+
+function timelineHtml(v) {
+  const items = (v.statusHistory || []).map((h) => {
+    const when = new Date(h.timestamp).toLocaleString([], { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' });
+    const where = h.coords
+      ? ` · <a href="https://maps.google.com/?q=${h.coords.lat},${h.coords.lng}" target="_blank" rel="noopener">check-in location${h.coords.accuracy ? ` (±${h.coords.accuracy} m)` : ''}</a>`
+      : '';
+    const extra = [h.note, h.reason && `Reason: ${h.reason}`].filter(Boolean).map(escapeHtml).join(' · ');
+    return `<li><strong>${escapeHtml(HISTORY_LABELS[h.step] || h.step)}</strong> <span>${escapeHtml(when)} · ${escapeHtml(teamMemberName(h.user) || h.user || '')}</span>${where}${extra ? `<div class="visit-tl-extra">${extra}</div>` : ''}</li>`;
+  }).join('');
+  const open = openTimelines.has(v.id) ? ' open' : '';
+  return `<details class="visit-timeline" data-timeline="${escapeHtml(v.id)}"${open}><summary>Timeline</summary><ol>${items}</ol></details>`;
+}
+
+function visitActionsHtml(v, today) {
+  const id = escapeHtml(v.id);
+  const staff = currentUserRole === 'sales' || currentUserRole === 'clp_doctor';
+  const mine = v.assignedPhysio === currentUser;
+  const buttons = [];
+
+  if (mine && !staff || (mine && currentUserRole === 'clp_doctor')) {
+    const next = NEXT_STEP[v.status];
+    if (next && (v.scheduledDate <= today || v.status === 'completed')) {
+      buttons.push(`<button type="button" class="btn-primary visit-btn" data-visit-step="${next.step}" data-visit-id="${id}" data-case-id="${escapeHtml(v.caseId)}">${next.label}</button>`);
+    }
+    if (NOT_STARTED.includes(v.status)) {
+      buttons.push(`<button type="button" class="btn-secondary visit-btn" data-visit-modal="request" data-visit-id="${id}">Ask to reschedule</button>`);
+    }
+    if (['confirmed', 'on_the_way', 'arrived'].includes(v.status) && v.scheduledDate <= today) {
+      buttons.push(`<button type="button" class="btn-secondary visit-btn" data-visit-modal="no_show" data-visit-id="${id}">Patient not available</button>`);
+    }
+  }
+
+  if (staff) {
+    if (v.status === 'reschedule_requested') {
+      buttons.push(`<button type="button" class="btn-primary visit-btn" data-visit-decision="approve" data-visit-id="${id}">Approve new time</button>`);
+      buttons.push(`<button type="button" class="btn-secondary visit-btn" data-visit-modal="decline" data-visit-id="${id}">Decline</button>`);
+    }
+    if (NOT_STARTED.includes(v.status) || ['cancelled', 'no_show', 'reschedule_requested'].includes(v.status)) {
+      const label = ['cancelled', 'no_show'].includes(v.status) ? 'Rebook' : 'Change date/time';
+      buttons.push(`<button type="button" class="btn-secondary visit-btn" data-visit-modal="edit" data-visit-id="${id}">${label}</button>`);
+    }
+  }
+
+  if ((staff || mine) && !CLOSED.includes(v.status) && !['completed', 'in_session'].includes(v.status)) {
+    buttons.push(`<button type="button" class="text-link visit-cancel" data-visit-modal="cancel" data-visit-id="${id}">Cancel visit</button>`);
+  }
+  return buttons.join('');
+}
+
+let visitsById = new Map();
+
+function renderVisits(data) {
+  const container = document.getElementById('today-visits-list');
+  const flagsEl = document.getElementById('visits-flags');
+  if (!container) return;
+  const list = data.visits || [];
+  const today = data.today;
+  visitsById = new Map(list.map((v) => [v.id, v]));
+  const staff = currentUserRole === 'sales' || currentUserRole === 'clp_doctor';
+
+  // Summary of what needs attention (Sales/Doctor).
+  if (flagsEl) {
+    const counts = {};
+    for (const v of list) for (const fl of visitFlags(v, today)) counts[fl.label] = (counts[fl.label] || 0) + 1;
+    const entries = Object.entries(counts);
+    flagsEl.hidden = !staff || entries.length === 0;
+    flagsEl.innerHTML = entries.map(([label, n]) => `<span class="visit-flag">${escapeHtml(label)}: ${n}</span>`).join('');
+  }
+
+  if (list.length === 0) {
+    container.innerHTML = `<p class="visits-empty">${visitsDays === 1 ? 'No visits today.' : 'No visits in the next 7 days.'}</p>`;
+    return;
+  }
+
+  const byDate = new Map();
+  for (const v of list) {
+    if (!byDate.has(v.scheduledDate)) byDate.set(v.scheduledDate, []);
+    byDate.get(v.scheduledDate).push(v);
+  }
+
+  container.innerHTML = [...byDate].map(([date, dayVisits]) => `
+    <div class="visits-day">
+      ${visitsDays > 1 ? `<h4 class="visits-day-title">${escapeHtml(prettyDate(date, today))}</h4>` : ''}
+      ${dayVisits.map((v) => {
+        const status = VISIT_STATUS[v.status] || { label: v.status, tone: 'muted' };
+        const flags = visitFlags(v, today);
+        const req = v.rescheduleRequest;
+        const mapUrl = `https://maps.google.com/?q=${encodeURIComponent(v.address || '')}`;
+        return `
+          <article class="visit-card${flags.length ? ' has-flags' : ''}${v.assignedPhysio === currentUser ? ' is-mine' : ''}">
+            <div class="visit-card-head">
+              <span class="visit-time">${escapeHtml(prettyTime(v.scheduledTime))}</span>
+              <div class="visit-who">
+                <strong>${escapeHtml(v.patientName)}</strong>
+                <span>Visit ${v.visitNumber}${staff ? ` · ${escapeHtml(v.assignedPhysio ? teamMemberName(v.assignedPhysio) : 'No physio yet')}` : ''}</span>
+              </div>
+              <span class="visit-status tone-${status.tone}">${escapeHtml(status.label)}</span>
+            </div>
+            ${v.address ? `<div class="visit-address">${escapeHtml(v.address)}</div>` : ''}
+            ${flags.length && staff ? `<div class="visit-flags-row">${flags.map((fl) => `<span class="visit-flag flag-${fl.key}">${escapeHtml(fl.label)}</span>`).join('')}</div>` : ''}
+            ${req ? `<div class="visit-request">Asked to move to <strong>${escapeHtml(prettyDate(req.newDate, today))}, ${escapeHtml(prettyTime(req.newTime))}</strong> · ${escapeHtml(req.reason || '')}</div>` : ''}
+            ${v.cancellationReason && ['cancelled', 'no_show'].includes(v.status) ? `<div class="visit-request">Reason: ${escapeHtml(v.cancellationReason)}</div>` : ''}
+            <div class="visit-actions">
+              ${v.patientMobile ? `<a class="contact-btn" href="tel:${escapeHtml(v.patientMobile)}">Call</a>` : ''}
+              ${v.address ? `<a class="contact-btn" href="${mapUrl}" target="_blank" rel="noopener">Map</a>` : ''}
+              ${visitActionsHtml(v, today)}
+            </div>
+            ${timelineHtml(v)}
+          </article>`;
+      }).join('')}
+    </div>`).join('');
+}
+
 async function loadTodayVisits() {
   const container = document.getElementById('today-visits-list');
   if (!container) return;
   try {
-    const data = await api('/api/visits/today');
-    renderTodayVisits(data.visits || []);
+    const data = await api(`/api/visits/schedule?days=${visitsDays}`);
+    renderVisits(data);
   } catch (err) {
-    container.innerHTML = `<p class="error" style="margin:0">Failed to load today's schedule: ${escapeHtml(err.message)}</p>`;
+    container.innerHTML = `<p class="error">Couldn't load visits: ${escapeHtml(err.message)}</p>`;
   }
 }
 
-function visitStepBadge(status) {
-  const stepMap = {
-    scheduled: { label: 'Scheduled', class: 'status-open' },
-    confirmed: { label: 'Confirmed', class: 'status-open' },
-    on_the_way: { label: 'On My Way', class: 'status-in_progress' },
-    arrived: { label: 'Checked In (Arrived)', class: 'status-in_progress' },
-    in_session: { label: 'Session Started', class: 'status-in_progress' },
-    completed: { label: 'Completed', class: 'status-completed' },
-    cancelled: { label: 'Cancelled', class: 'status-failed' },
-    no_show: { label: 'No Show / Away', class: 'status-failed' },
-    reschedule_requested: { label: 'Reschedule Requested', class: 'status-pending' },
-  };
-  const info = stepMap[status] || { label: status, class: 'status-open' };
-  return `<span class="status-pill ${info.class}">${escapeHtml(info.label)}</span>`;
-}
-
-function nextActionForStep(v) {
-  const status = v.status || 'scheduled';
-  if (status === 'scheduled') {
-    return `<button type="button" class="pill-btn btn-visit-action" data-visit-id="${v.id}" data-next-step="confirmed">Confirm Visit</button>`;
-  }
-  if (status === 'confirmed') {
-    return `<button type="button" class="pill-btn btn-visit-action" data-visit-id="${v.id}" data-next-step="on_the_way">On My Way</button>`;
-  }
-  if (status === 'on_the_way') {
-    return `<button type="button" class="pill-btn btn-visit-action" data-visit-id="${v.id}" data-next-step="arrived">Check In (Arrived at Patient Home)</button>`;
-  }
-  if (status === 'arrived') {
-    return `<button type="button" class="pill-btn btn-visit-action" data-visit-id="${v.id}" data-next-step="in_session">Start Session</button>`;
-  }
-  if (status === 'in_session') {
-    return `<button type="button" class="pill-btn btn-visit-action" data-visit-id="${v.id}" data-next-step="completed" data-case-id="${v.caseId}">Complete Session &amp; Fill Notes</button>`;
-  }
-  return '';
-}
-
-function renderTodayVisits(visitsList) {
-  const container = document.getElementById('today-visits-list');
-  if (!container) return;
-
-  if (visitsList.length === 0) {
-    container.innerHTML = `
-      <div style="padding: 12px 0; color: #64748b;">
-        <p style="margin: 0; font-size: 0.9rem;">No home visits scheduled for today.</p>
-      </div>`;
-    return;
-  }
-
-  container.innerHTML = visitsList.map((v) => {
-    const isMine = v.assignedPhysio === currentUser;
-    const phoneCall = v.patientMobile ? `href="tel:${escapeHtml(v.patientMobile)}"` : '';
-    const mapQuery = encodeURIComponent(`${v.address || ''} ${v.patientName || ''}`);
-    const mapUrl = `https://maps.google.com/?q=${mapQuery}`;
-    const overlapNotice = v.overlapWarning ? `<div style="color: #c2410c; font-size: 0.8rem; font-weight: 600; margin-top: 4px;">Schedule overlap warning: visits scheduled within 45 mins</div>` : '';
-
-    return `
-      <div class="today-visit-card ${isMine ? 'is-mine' : ''}" style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 14px 16px; margin-bottom: 10px;">
-        <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8px;">
-          <div>
-            <div style="display: flex; align-items: center; gap: 8px;">
-              <span style="background: #f1f5f9; padding: 4px 10px; border-radius: 999px; font-weight: 700; font-size: 0.85rem; color: #0f172a;">${escapeHtml(v.scheduledTime || '10:00')}</span>
-              <strong style="font-size: 1rem; color: #0f172a;">${escapeHtml(v.patientName)}</strong>
-              <span style="font-size: 0.8rem; color: #64748b;">(Visit ${v.visitNumber})</span>
-            </div>
-            ${overlapNotice}
-          </div>
-          ${visitStepBadge(v.status)}
-        </div>
-
-        <div style="font-size: 0.88rem; color: #475569; margin-bottom: 12px; display: flex; flex-wrap: wrap; gap: 14px;">
-          <span>📍 ${escapeHtml(v.address || 'No address provided')}</span>
-          <span>👤 ${v.assignedPhysio ? escapeHtml(teamMemberName(v.assignedPhysio)) : 'Unassigned'}</span>
-        </div>
-
-        <div style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center;">
-          ${v.patientMobile ? `<a ${phoneCall} class="pill-btn" style="text-decoration: none; padding: 6px 12px; font-size: 0.82rem;">Call</a>` : ''}
-          <a href="${mapUrl}" target="_blank" rel="noopener" class="pill-btn" style="text-decoration: none; padding: 6px 12px; font-size: 0.82rem;">Map</a>
-          ${nextActionForStep(v)}
-          ${v.status !== 'completed' && v.status !== 'cancelled' ? `<button type="button" class="btn-secondary btn-reschedule-trigger" data-visit-id="${v.id}" style="padding: 6px 12px; font-size: 0.82rem;">Reschedule</button>` : ''}
-        </div>
-      </div>
-    `;
-  }).join('');
-
-  container.querySelectorAll('.btn-visit-action').forEach((btn) => {
-    btn.addEventListener('click', async () => {
-      const visitId = btn.dataset.visitId;
-      const nextStep = btn.dataset.nextStep;
-      const caseId = btn.dataset.caseId;
-
-      btn.disabled = true;
-      try {
-        let coords = null;
-        if (nextStep === 'arrived' && navigator.geolocation) {
-          coords = await new Promise((resolve) => {
-            navigator.geolocation.getCurrentPosition(
-              (pos) => resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
-              () => resolve(null),
-              { timeout: 5000 }
-            );
-          });
-        }
-        await api(`/api/visits/${visitId}/step`, {
-          method: 'POST',
-          body: JSON.stringify({ step: nextStep, coords }),
-        });
-
-        if (nextStep === 'completed' && caseId) {
-          fbCaseId.value = caseId;
-          renderFeedbackForm();
-          if (feedbackModal) feedbackModal.hidden = false;
-        }
-
-        await loadTodayVisits();
-        await loadCases();
-      } catch (err) {
-        alert(err.message || 'Failed to update visit status');
-      } finally {
-        btn.disabled = false;
-      }
-    });
-  });
-
-  container.querySelectorAll('.btn-reschedule-trigger').forEach((btn) => {
-    btn.addEventListener('click', async () => {
-      const visitId = btn.dataset.visitId;
-      const newDate = prompt('Enter new date (YYYY-MM-DD):', new Date().toISOString().split('T')[0]);
-      if (!newDate) return;
-      const newTime = prompt('Enter new time (HH:MM):', '10:00');
-      if (!newTime) return;
-      const reason = prompt('Reason for reschedule request:');
-      if (!reason) return;
-
-      try {
-        await api(`/api/visits/${visitId}/reschedule-request`, {
-          method: 'POST',
-          body: JSON.stringify({ newDate, newTime, reason }),
-        });
-        alert('Reschedule request submitted successfully.');
-        await loadTodayVisits();
-      } catch (err) {
-        alert(err.message || 'Failed to submit reschedule request');
-      }
-    });
+function getPosition() {
+  if (!navigator.geolocation) return Promise.resolve(null);
+  return new Promise((resolve) => {
+    navigator.geolocation.getCurrentPosition(
+      (pos) => resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude, accuracy: pos.coords.accuracy }),
+      () => resolve(null), // location is a record only -- never blocks the check-in
+      { timeout: 8000, enableHighAccuracy: true }
+    );
   });
 }
+
+function openNotesForVisit(visit) {
+  fbCaseId.value = visit.caseId;
+  const fbVisit = document.getElementById('fb-visit-id');
+  if (fbVisit) fbVisit.value = visit.id;
+  document.getElementById('modal-subtitle').textContent = `${visit.patientName} · Visit ${visit.visitNumber}`;
+  renderFeedbackForm();
+  if (feedbackModal) feedbackModal.hidden = false;
+}
+
+// ----- the small visit window (reschedule / change time / cancel / no-show / decline) -----
+const VISIT_MODAL_MODES = {
+  request: { title: 'Ask to reschedule', when: true, reason: 'Why does it need to move?', reasonRequired: true, submit: 'Send request' },
+  edit: { title: 'Change date/time', when: true, reason: 'Note (optional)', reasonRequired: false, submit: 'Save' },
+  cancel: { title: 'Cancel visit', when: false, reason: 'Why is it cancelled?', reasonRequired: true, submit: 'Cancel visit' },
+  no_show: { title: 'Patient not available', when: false, reason: 'What happened?', reasonRequired: true, submit: 'Save' },
+  decline: { title: 'Decline reschedule', when: false, reason: 'Note for the physio (optional)', reasonRequired: false, submit: 'Decline' },
+};
+let visitModalState = null;
+
+function openVisitModal(mode, visit) {
+  const cfg = VISIT_MODAL_MODES[mode];
+  visitModalState = { mode, visit };
+  document.getElementById('visit-modal-title').textContent = cfg.title;
+  document.getElementById('visit-modal-subtitle').textContent = `${visit.patientName} · Visit ${visit.visitNumber} · ${visit.scheduledDate} ${visit.scheduledTime}`;
+  document.getElementById('visit-form-when').hidden = !cfg.when;
+  const date = document.getElementById('visit-form-date');
+  const time = document.getElementById('visit-form-time');
+  date.value = visit.scheduledDate;
+  date.min = todayInputValue();
+  time.value = visit.scheduledTime;
+  document.getElementById('visit-form-reason-label').textContent = cfg.reason;
+  document.getElementById('visit-form-reason').value = '';
+  document.getElementById('visit-form-submit').textContent = cfg.submit;
+  document.getElementById('visit-form-error').textContent = '';
+  document.getElementById('visit-modal').hidden = false;
+  (cfg.when ? date : document.getElementById('visit-form-reason')).focus();
+}
+
+function closeVisitModal() {
+  document.getElementById('visit-modal').hidden = true;
+  visitModalState = null;
+}
+
+async function refreshAfterVisitChange() {
+  await Promise.all([loadTodayVisits(), loadCases().catch(() => {})]);
+}
+
+const visitForm = document.getElementById('visit-form');
+if (visitForm) {
+  document.getElementById('close-visit-modal').addEventListener('click', closeVisitModal);
+  document.getElementById('visit-form-cancel').addEventListener('click', closeVisitModal);
+  visitForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    if (!visitModalState) return;
+    const { mode, visit } = visitModalState;
+    const cfg = VISIT_MODAL_MODES[mode];
+    const errorEl = document.getElementById('visit-form-error');
+    const date = document.getElementById('visit-form-date').value;
+    const time = document.getElementById('visit-form-time').value;
+    const reason = document.getElementById('visit-form-reason').value.trim();
+    if (cfg.when && (!date || !time)) { errorEl.textContent = 'Please choose a date and time.'; return; }
+    if (cfg.reasonRequired && !reason) { errorEl.textContent = 'Please give a reason.'; return; }
+
+    const submitBtn = document.getElementById('visit-form-submit');
+    submitBtn.disabled = true;
+    try {
+      const id = encodeURIComponent(visit.id);
+      if (mode === 'request') await api(`/api/visits/${id}/reschedule-request`, { method: 'POST', body: JSON.stringify({ newDate: date, newTime: time, reason }) });
+      if (mode === 'edit') await api(`/api/visits/${id}/schedule`, { method: 'PUT', body: JSON.stringify({ date, time, reason }) });
+      if (mode === 'cancel') await api(`/api/visits/${id}/step`, { method: 'POST', body: JSON.stringify({ step: 'cancelled', reason }) });
+      if (mode === 'no_show') await api(`/api/visits/${id}/step`, { method: 'POST', body: JSON.stringify({ step: 'no_show', reason }) });
+      if (mode === 'decline') await api(`/api/visits/${id}/reschedule-decision`, { method: 'POST', body: JSON.stringify({ approve: false, note: reason }) });
+      closeVisitModal();
+      await refreshAfterVisitChange();
+    } catch (err) {
+      errorEl.textContent = err.message;
+    } finally {
+      submitBtn.disabled = false;
+    }
+  });
+}
+
+// One set of listeners for every visit card.
+const visitsListEl = document.getElementById('today-visits-list');
+if (visitsListEl) {
+  visitsListEl.addEventListener('toggle', (e) => {
+    const d = e.target.closest && e.target.closest('[data-timeline]');
+    if (!d) return;
+    if (d.open) openTimelines.add(d.dataset.timeline); else openTimelines.delete(d.dataset.timeline);
+  }, true);
+
+  visitsListEl.addEventListener('click', async (e) => {
+    const btn = e.target.closest('[data-visit-step], [data-visit-modal], [data-visit-decision]');
+    if (!btn) return;
+    const visit = visitsById.get(btn.dataset.visitId);
+    if (!visit) return;
+
+    if (btn.dataset.visitModal) {
+      openVisitModal(btn.dataset.visitModal, visit);
+      return;
+    }
+
+    btn.disabled = true;
+    try {
+      if (btn.dataset.visitDecision === 'approve') {
+        await api(`/api/visits/${encodeURIComponent(visit.id)}/reschedule-decision`, { method: 'POST', body: JSON.stringify({ approve: true }) });
+      } else if (btn.dataset.visitStep === 'notes') {
+        openNotesForVisit(visit);
+        return;
+      } else {
+        const step = btn.dataset.visitStep;
+        const coords = step === 'arrived' ? await getPosition() : null;
+        await api(`/api/visits/${encodeURIComponent(visit.id)}/step`, { method: 'POST', body: JSON.stringify({ step, coords }) });
+        if (step === 'completed') openNotesForVisit({ ...visit, status: 'completed' });
+      }
+      await refreshAfterVisitChange();
+    } catch (err) {
+      alert(err.message || 'Could not update the visit');
+    } finally {
+      btn.disabled = false;
+    }
+  });
+}
+
+document.querySelectorAll('.visits-range-btn').forEach((btn) => {
+  btn.addEventListener('click', () => {
+    visitsDays = parseInt(btn.dataset.days, 10) || 1;
+    document.querySelectorAll('.visits-range-btn').forEach((b) => {
+      const on = b === btn;
+      b.classList.toggle('active', on);
+      b.setAttribute('aria-pressed', String(on));
+    });
+    loadTodayVisits();
+  });
+});
 
 function startPolling() {
   if (pollTimer) clearInterval(pollTimer);

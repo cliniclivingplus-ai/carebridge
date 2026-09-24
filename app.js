@@ -17,7 +17,8 @@ const store = db.isConfigured() ? require('./lib/store-pg') : require('./lib/sto
 const partners = db.isConfigured() ? require('./lib/partners-pg') : require('./lib/partners');
 const plans = db.isConfigured() ? require('./lib/plans-pg') : require('./lib/plans');
 const cases = db.isConfigured() ? require('./lib/cases-pg') : require('./lib/cases');
-const visits = db.isConfigured() ? require('./lib/visits-pg') : require('./lib/visits');
+const { createVisitService, VisitError } = require('./lib/visit-service');
+const visits = createVisitService(db.isConfigured() ? require('./lib/visits-pg') : require('./lib/visits'));
 const feedbackQuestions = require('./lib/feedback-questions.json');
 const { validateFeedback } = require('./lib/feedback-validate');
 
@@ -133,6 +134,18 @@ function caseForViewer(user, c) {
   if (!c || CLINIC_STAFF.includes(user.role)) return c;
   const { cliniceaPatientId, ...rest } = c;
   return rest;
+}
+
+function sendError(res, err, fallbackStatus = 400) {
+  res.status(err instanceof VisitError ? err.status : fallbackStatus).json({ error: err.message });
+}
+
+// Physios and Doctors can be given cases; Sales can't do visits.
+async function assertCanTakeCases(username) {
+  const member = (await partners.listTeam()).find((t) => t.username === username);
+  if (!member || !['external_physio', 'clp_doctor'].includes(member.role)) {
+    throw new VisitError('Cases can only be assigned to an existing physio or doctor');
+  }
 }
 
 // Clinic-side staff. PhysioWay (external_physio) has no Clinicea access: every route that reads
@@ -575,6 +588,12 @@ app.post('/api/cases', requireAuth, requireRole(['sales', 'clp_doctor']), async 
   if (!Number.isInteger(sessionCount) || sessionCount < 1 || sessionCount > 100) {
     return res.status(400).json({ error: 'Allotted sessions must be a number between 1 and 100' });
   }
+  const { startDate, startTime, pattern } = req.body || {};
+  try {
+    visits.validateScheduleInput({ startDate, startTime, pattern });
+  } catch (err) {
+    return sendError(res, err);
+  }
   try {
     // Resolve Clinicea's internal patient ID on the server rather than trusting the browser:
     // it's what the encounter sync writes to, and a wrong one would put notes on another patient.
@@ -597,20 +616,7 @@ app.post('/api/cases', requireAuth, requireRole(['sales', 'clp_doctor']), async 
       createdBy: req.session.user.username,
       instructions,
     });
-    const { startDate, startTime, pattern } = req.body || {};
-    const createdVisits = await visits.createVisitSchedule({
-      caseId: newCase.id,
-      patientId: newCase.patientId,
-      patientName: newCase.patientName,
-      patientMobile: newCase.patientMobile,
-      address: newCase.address,
-      allottedSessions: newCase.allottedSessions,
-      startDate: startDate || new Date().toISOString().split('T')[0],
-      startTime: startTime || '10:00',
-      pattern: pattern || 'MWF',
-      assignedPhysio: newCase.assignedPhysio,
-      createdBy: req.session.user.username,
-    });
+    const createdVisits = await visits.createSchedule(newCase, { startDate, startTime, pattern }, req.session.user);
     res.json({ ok: true, case: newCase, visits: createdVisits });
   } catch (err) {
     res.status(400).json({ error: err.message });
@@ -626,7 +632,12 @@ app.get('/api/cases', requireAuth, async (req, res) => {
       physio: req.session.user.username,
       query: query || '',
     });
-    res.json({ ok: true, cases: caseList.map((c) => caseForViewer(req.session.user, c)) });
+    const summaries = await visits.summariesForCases(caseList.map((c) => c.id));
+    res.json({
+      ok: true,
+      today: visits.todayIST(),
+      cases: caseList.map((c) => ({ ...caseForViewer(req.session.user, c), visitSummary: summaries.get(c.id) })),
+    });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -635,33 +646,26 @@ app.get('/api/cases', requireAuth, async (req, res) => {
 // POST /api/cases/:id/allotment & PATCH /api/cases/:id/allotment (Edit session allotment for an existing case)
 const handleCaseAllotmentUpdate = async (req, res) => {
   const { allottedSessions, assignedPhysio, instructions } = req.body || {};
+  const user = req.session.user;
   try {
     const existingCase = await cases.getCase(req.params.id);
     if (!existingCase) return res.status(404).json({ error: 'Case not found' });
 
-    const updatedCase = await cases.updateCaseAllotted(req.params.id, {
-      allottedSessions,
-      assignedPhysio,
-      instructions,
-    });
+    const physioChange = assignedPhysio !== undefined && (assignedPhysio || null) !== (existingCase.assignedPhysio || null);
+    if (physioChange && assignedPhysio) await assertCanTakeCases(assignedPhysio);
 
-    if (assignedPhysio !== undefined) {
-      await visits.assignVisitsToPhysio(req.params.id, assignedPhysio);
+    let updatedCase = await cases.updateCaseAllotted(req.params.id, { allottedSessions, instructions });
+    // Add or remove visits so there is one per allotted session. Fails (before anything else
+    // changes) if that would delete a visit that has already started.
+    await visits.resizeSchedule(updatedCase, user);
+
+    if (physioChange && updatedCase.status !== 'completed') {
+      updatedCase = await cases.assignCase(req.params.id, assignedPhysio || null);
+      await visits.syncAssignment(req.params.id, assignedPhysio || null, user);
     }
-
-    if (allottedSessions !== undefined && updatedCase.patientId) {
-      await plans.updateAllotted(
-        updatedCase.patientId,
-        updatedCase.allottedSessions,
-        updatedCase.assignedPhysio,
-        updatedCase.instructions,
-        req.session.user.username
-      ).catch(() => {});
-    }
-
-    res.json({ ok: true, case: caseForViewer(req.session.user, updatedCase) });
+    res.json({ ok: true, case: caseForViewer(user, updatedCase) });
   } catch (err) {
-    res.status(400).json({ error: err.message });
+    sendError(res, err);
   }
 };
 
@@ -683,7 +687,7 @@ app.get('/api/cases/:id', requireAuth, async (req, res) => {
 app.post('/api/cases/:id/claim', requireAuth, requireRole(['external_physio', 'clp_doctor']), async (req, res) => {
   try {
     const updatedCase = await cases.claimCase(req.params.id, req.session.user.username);
-    await visits.assignVisitsToPhysio(req.params.id, req.session.user.username);
+    await visits.syncAssignment(req.params.id, req.session.user.username, req.session.user);
     res.json({ ok: true, case: caseForViewer(req.session.user, updatedCase) });
   } catch (err) {
     const status = err.message === 'Case not found' ? 404 : 409;
@@ -715,7 +719,7 @@ app.put('/api/cases/:id/assign', requireAuth, async (req, res) => {
       }
     }
     const updatedCase = await cases.assignCase(req.params.id, assignedPhysio || null);
-    await visits.assignVisitsToPhysio(req.params.id, assignedPhysio || null);
+    await visits.syncAssignment(req.params.id, assignedPhysio || null, user);
     res.json({ ok: true, case: caseForViewer(req.session.user, updatedCase) });
   } catch (err) {
     res.status(400).json({ error: err.message });
@@ -724,65 +728,72 @@ app.put('/api/cases/:id/assign', requireAuth, async (req, res) => {
 
 // ---------- Phase 2a: Visits & Lifecycle Endpoints ----------
 
-// GET /api/visits/today (Physio's time-sorted schedule for specified date or today)
-app.get('/api/visits/today', requireAuth, async (req, res) => {
-  const { date } = req.query || {};
-  const isPhysio = req.session.user.role === 'external_physio';
-  const physioFilter = isPhysio ? req.session.user.username : null;
+// GET /api/visits/schedule?from=YYYY-MM-DD&days=N -- physios see their own visits, Sales/Doctors
+// see everyone's (the "today board").
+app.get('/api/visits/schedule', requireAuth, async (req, res) => {
+  const user = req.session.user;
   try {
-    const list = await visits.listVisitsForPhysio(physioFilter, date);
-    res.json({ ok: true, visits: list, date: date || new Date().toISOString().split('T')[0] });
+    const result = await visits.listSchedule({
+      fromDate: req.query.from,
+      days: req.query.days,
+      username: CLINIC_STAFF.includes(user.role) ? null : user.username,
+    });
+    res.json({ ok: true, ...result });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    sendError(res, err, 500);
   }
 });
 
-// GET /api/cases/:id/visits (All visits belonging to a case)
+// GET /api/cases/:id/visits
 app.get('/api/cases/:id/visits', requireAuth, async (req, res) => {
   try {
-    const list = await visits.listVisitsForCase(req.params.id);
-    res.json({ ok: true, visits: list });
+    res.json({ ok: true, visits: await visits.listForCase(req.params.id) });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    sendError(res, err, 500);
   }
 });
 
-// POST /api/visits/:id/step (Advance 8-Step Visit Lifecycle)
+// POST /api/visits/:id/step { step, coords?, reason? }
+//   on_the_way / arrived / in_session / completed -- the assigned physio, in order, on the day
+//   cancelled / no_show -- the assigned physio or Sales/Doctor, with a reason
 app.post('/api/visits/:id/step', requireAuth, async (req, res) => {
   const { step, coords, reason } = req.body || {};
-  const validSteps = ['confirmed', 'on_the_way', 'arrived', 'in_session', 'completed', 'cancelled', 'no_show'];
-  if (!step || !validSteps.includes(step)) {
-    return res.status(400).json({ error: `Invalid step. Allowed steps: ${validSteps.join(', ')}` });
-  }
+  const user = req.session.user;
   try {
-    const updated = await visits.updateVisitStep(req.params.id, {
-      step,
-      username: req.session.user.username,
-      coords,
-      reason,
-    });
-    res.json({ ok: true, visit: updated });
+    const visit = ['cancelled', 'no_show'].includes(step)
+      ? await visits.stop(req.params.id, step, user, reason)
+      : await visits.advance(req.params.id, step, user, { coords });
+    res.json({ ok: true, visit });
   } catch (err) {
-    res.status(400).json({ error: err.message });
+    sendError(res, err);
   }
 });
 
-// POST /api/visits/:id/reschedule-request (Submit Reschedule Request)
+// POST /api/visits/:id/reschedule-request { newDate, newTime, reason } -- assigned physio
 app.post('/api/visits/:id/reschedule-request', requireAuth, async (req, res) => {
-  const { newDate, newTime, reason } = req.body || {};
-  if (!newDate || !newTime || !reason) {
-    return res.status(400).json({ error: 'Please provide newDate, newTime, and a reason for rescheduling' });
-  }
   try {
-    const updated = await visits.requestReschedule(req.params.id, {
-      newDate,
-      newTime,
-      reason,
-      username: req.session.user.username,
-    });
-    res.json({ ok: true, visit: updated });
+    res.json({ ok: true, visit: await visits.requestReschedule(req.params.id, req.session.user, req.body || {}) });
   } catch (err) {
-    res.status(400).json({ error: err.message });
+    sendError(res, err);
+  }
+});
+
+// POST /api/visits/:id/reschedule-decision { approve: boolean, note? } -- Sales/Doctor
+app.post('/api/visits/:id/reschedule-decision', requireAuth, requireRole(CLINIC_STAFF), async (req, res) => {
+  const { approve, note } = req.body || {};
+  try {
+    res.json({ ok: true, visit: await visits.decideReschedule(req.params.id, req.session.user, { approve: approve === true, note }) });
+  } catch (err) {
+    sendError(res, err);
+  }
+});
+
+// PUT /api/visits/:id/schedule { date, time, reason? } -- Sales/Doctor move or rebook a visit
+app.put('/api/visits/:id/schedule', requireAuth, requireRole(CLINIC_STAFF), async (req, res) => {
+  try {
+    res.json({ ok: true, visit: await visits.editSchedule(req.params.id, req.session.user, req.body || {}) });
+  } catch (err) {
+    sendError(res, err);
   }
 });
 
@@ -812,7 +823,9 @@ app.post('/api/cases/:id/feedback', requireAuth, requireRole(['external_physio',
       sessionDate: feedback.sessionDateTime,
       physioUsername: req.session.user.username,
     });
-    res.json({ ok: true, ...result, case: caseForViewer(req.session.user, result.case) });
+    const visitId = typeof req.body.visitId === 'string' ? req.body.visitId : null;
+    const closedVisit = await visits.markNotesSubmitted(req.params.id, visitId, result.session.id, user);
+    res.json({ ok: true, ...result, visit: closedVisit, case: caseForViewer(req.session.user, result.case) });
   } catch (err) {
     res.status(400).json({ error: err.message });
   }
