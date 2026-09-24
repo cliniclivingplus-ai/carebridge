@@ -237,6 +237,33 @@
     </nav>
   </div>
 
+  <!-- Delete case confirmation (Sales/Doctor). -->
+  <div id="delete-case-modal" class="modal-backdrop" hidden>
+    <div class="modal-card glass-card" role="dialog" aria-modal="true" aria-labelledby="delete-case-title">
+      <div class="modal-header">
+        <div>
+          <h3 id="delete-case-title">Delete case?</h3>
+          <p id="delete-case-subtitle"></p>
+        </div>
+        <button id="close-delete-case-modal" class="close-btn" type="button" aria-label="Close">&times;</button>
+      </div>
+      <form id="delete-case-form" novalidate>
+        <p class="delete-case-lead">This permanently removes from CareBridge:</p>
+        <ul id="delete-case-summary" class="delete-case-list"></ul>
+        <p id="delete-case-clinicea" class="delete-case-note"></p>
+        <div class="input-group">
+          <label for="delete-case-confirm">Type <strong id="delete-case-expected"></strong> to confirm</label>
+          <input type="text" id="delete-case-confirm" autocomplete="off" />
+        </div>
+        <p id="delete-case-error" class="error" role="alert"></p>
+        <div class="modal-footer">
+          <button type="button" id="delete-case-cancel" class="btn-secondary">Keep case</button>
+          <button type="submit" id="delete-case-submit" class="btn-danger" disabled>Delete case</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
   <!-- Visit action window: reschedule request, change date/time, cancel / no-show. -->
   <div id="visit-modal" class="modal-backdrop" hidden>
     <div class="modal-card glass-card" role="dialog" aria-modal="true" aria-labelledby="visit-modal-title">

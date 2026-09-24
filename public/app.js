@@ -580,6 +580,12 @@ function renderCasesList(casesList) {
           `;
         })()}
       </div>
+
+      ${canEditAllotment ? `
+        <div class="case-delete-row">
+          <button type="button" class="text-link case-delete-btn" data-delete-case="${escapeHtml(item.id)}">Delete case</button>
+        </div>
+      ` : ''}
     `;
     listEl.appendChild(card);
   }
@@ -588,6 +594,14 @@ function renderCasesList(casesList) {
 }
 
 function attachCardEvents() {
+  // Delete case: confirmation window first.
+  listEl.querySelectorAll('[data-delete-case]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const item = rawCases.find((c) => c.id === btn.dataset.deleteCase);
+      if (item) openDeleteCaseModal(item);
+    });
+  });
+
   // Session pills: open one session's details; tapping the open one closes it.
   // Send a saved session's report to Clinicea (sessions saved while sync was off, or that failed).
   listEl.querySelectorAll('[data-sync-session]').forEach((btn) => {
@@ -1446,6 +1460,62 @@ document.querySelectorAll('.visits-range-btn').forEach((btn) => {
     loadTodayVisits();
   });
 });
+
+// ---------- Delete case (Sales/Doctor) ----------
+let caseToDelete = null;
+
+function openDeleteCaseModal(item) {
+  caseToDelete = item;
+  const sessions = (item.sessions || []).length;
+  const visitsTotal = (item.visitSummary && item.visitSummary.total) || 0;
+  const synced = (item.sessions || []).filter((s) => s.cliniceaSyncStatus === 'synced').length;
+  document.getElementById('delete-case-subtitle').textContent = `${item.patientName} (${item.patientId}) · ${item.id}`;
+  document.getElementById('delete-case-summary').innerHTML = `
+    <li>The case and its programme details</li>
+    <li>${visitsTotal} visit${visitsTotal === 1 ? '' : 's'} (including their timelines)</li>
+    <li>${sessions} recorded session${sessions === 1 ? '' : 's'} and their notes</li>`;
+  document.getElementById('delete-case-clinicea').textContent = synced
+    ? `${synced} session report${synced === 1 ? ' is' : 's are'} already attached in Clinicea and will stay there.`
+    : 'Nothing in Clinicea is changed.';
+  const input = document.getElementById('delete-case-confirm');
+  input.value = '';
+  input.placeholder = item.patientId;
+  document.getElementById('delete-case-expected').textContent = item.patientId;
+  document.getElementById('delete-case-submit').disabled = true;
+  document.getElementById('delete-case-error').textContent = '';
+  document.getElementById('delete-case-modal').hidden = false;
+  input.focus();
+}
+
+function closeDeleteCaseModal() {
+  document.getElementById('delete-case-modal').hidden = true;
+  caseToDelete = null;
+}
+
+const deleteCaseForm = document.getElementById('delete-case-form');
+if (deleteCaseForm) {
+  const input = document.getElementById('delete-case-confirm');
+  // The delete button only unlocks once the patient's file number is typed exactly.
+  input.addEventListener('input', () => {
+    document.getElementById('delete-case-submit').disabled = !caseToDelete || input.value.trim() !== caseToDelete.patientId;
+  });
+  document.getElementById('close-delete-case-modal').addEventListener('click', closeDeleteCaseModal);
+  document.getElementById('delete-case-cancel').addEventListener('click', closeDeleteCaseModal);
+  deleteCaseForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    if (!caseToDelete || input.value.trim() !== caseToDelete.patientId) return;
+    const submit = document.getElementById('delete-case-submit');
+    submit.disabled = true;
+    try {
+      await api(`/api/cases/${encodeURIComponent(caseToDelete.id)}`, { method: 'DELETE' });
+      closeDeleteCaseModal();
+      await loadCases();
+    } catch (err) {
+      document.getElementById('delete-case-error').textContent = err.message;
+      submit.disabled = false;
+    }
+  });
+}
 
 function startPolling() {
   if (pollTimer) clearInterval(pollTimer);
