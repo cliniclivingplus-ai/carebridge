@@ -1255,6 +1255,7 @@ async function loadCases() {
 
 let visitsDays = 1; // 1 = Today, 7 = Next 7 days
 const openTimelines = new Set(); // visit ids whose timeline is expanded (kept across refreshes)
+let showFinishedVisits = false; // finished visits fold into one line until asked for
 
 const VISIT_STATUS = {
   scheduled: { label: 'Waiting for a physio', tone: 'muted' },
@@ -1354,8 +1355,7 @@ function timelineHtml(v) {
     const extra = [readableNote(h.note), h.reason && `Reason: ${h.reason}`].filter(Boolean).map(escapeHtml).join(' · ');
     return `<li><strong>${escapeHtml(HISTORY_LABELS[h.step] || h.step)}</strong> <span>${escapeHtml(when)} · ${escapeHtml(teamMemberName(h.user) || h.user || '')}</span>${where}${extra ? `<div class="visit-tl-extra">${extra}</div>` : ''}</li>`;
   }).join('');
-  const open = openTimelines.has(v.id) ? ' open' : '';
-  return `<details class="visit-timeline" data-timeline="${escapeHtml(v.id)}"${open}><summary>Timeline</summary><ol>${items}</ol></details>`;
+  return `<div class="visit-timeline"${openTimelines.has(v.id) ? '' : ' hidden'}><div class="visit-timeline-title">History</div><ol>${items}</ol></div>`;
 }
 
 function visitActionsHtml(v, today) {
@@ -1425,40 +1425,49 @@ function renderVisits(data) {
     byDate.get(v.scheduledDate).push(v);
   }
 
-  container.innerHTML = [...byDate].map(([date, dayVisits]) => `
+  container.innerHTML = [...byDate].map(([date, dayVisits]) => {
+    const finished = dayVisits.filter((v) => CLOSED.includes(v.status)).length;
+    return `
     <div class="visits-day">
       ${visitsDays > 1 ? `<h4 class="visits-day-title">${escapeHtml(prettyDate(date, today))}</h4>` : ''}
+      ${finished ? `<button type="button" class="visits-finished-toggle" data-toggle-finished aria-expanded="${showFinishedVisits}">${showFinishedVisits ? 'Hide' : 'Show'} ${finished} finished visit${finished === 1 ? '' : 's'}</button>` : ''}
       ${dayVisits.map((v) => {
         const status = VISIT_STATUS[v.status] || { label: v.status, tone: 'muted' };
         const flags = visitFlags(v, today);
         const req = v.rescheduleRequest;
         const mapUrl = `https://maps.google.com/?q=${encodeURIComponent(v.address || '')}`;
+        const isFinished = CLOSED.includes(v.status);
+        const meta = [`Visit ${v.visitNumber}`, staff ? (v.assignedPhysio ? teamMemberName(v.assignedPhysio) : 'No physio yet') : '', v.address || '']
+          .filter(Boolean).map(escapeHtml).join(' · ');
+        const actions = [
+          visitActionsHtml(v, today),
+          v.patientMobile ? `<a class="visit-icon-btn" href="tel:${escapeHtml(v.patientMobile)}" title="Call patient" aria-label="Call ${escapeHtml(v.patientName)}"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg></a>` : '',
+          v.address ? `<a class="visit-icon-btn" href="${mapUrl}" target="_blank" rel="noopener" title="Open in Maps" aria-label="Map for ${escapeHtml(v.patientName)}"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg></a>` : '',
+        ].join('').trim();
+        const notes = [
+          flags.length && staff ? flags.filter((fl) => !['unassigned', 'reschedule'].includes(fl.key)).map((fl) => `<span class="visit-flag flag-${fl.key}">${escapeHtml(fl.label)}</span>`).join('') : '',
+          req ? `<span class="visit-request">Asked to move to <strong>${escapeHtml(prettyDate(req.newDate, today))}, ${escapeHtml(prettyTime(req.newTime))}</strong>${req.reason ? ` · ${escapeHtml(req.reason)}` : ''}</span>` : '',
+          v.cancellationReason && ['cancelled', 'no_show'].includes(v.status) ? `<span class="visit-request">Reason: ${escapeHtml(v.cancellationReason)}</span>` : '',
+        ].join('');
+        const historyOpen = openTimelines.has(v.id);
         return `
-          <article class="visit-card${flags.length ? ' has-flags' : ''}${v.assignedPhysio === currentUser ? ' is-mine' : ''}">
-            <div class="visit-card-head">
+          <article class="visit-card${flags.length && staff ? ' has-flags' : ''}${v.assignedPhysio === currentUser ? ' is-mine' : ''}${isFinished ? ' is-finished' : ''}"${isFinished && !showFinishedVisits ? ' hidden' : ''}>
+            <div class="visit-line">
               <span class="visit-time">${escapeHtml(prettyTime(v.scheduledTime))}</span>
               <div class="visit-who">
                 <strong>${escapeHtml(v.patientName)}</strong>
-                <span>Visit ${v.visitNumber}${staff ? ` · ${escapeHtml(v.assignedPhysio ? teamMemberName(v.assignedPhysio) : 'No physio yet')}` : ''}</span>
+                <span class="visit-meta">${meta}</span>
               </div>
-              <span class="visit-status tone-${status.tone}">${escapeHtml(status.label)}</span>
+              <span class="visit-status-cell"><span class="visit-status tone-${status.tone}">${escapeHtml(status.label)}</span></span>
+              <div class="visit-actions">${actions}</div>
+              <button type="button" class="visit-more" data-toggle-timeline="${escapeHtml(v.id)}" aria-expanded="${historyOpen}" title="History" aria-label="Show history for ${escapeHtml(v.patientName)}"></button>
             </div>
-            ${v.address ? `<div class="visit-address">${escapeHtml(v.address)}</div>` : ''}
-            ${flags.length && staff ? `<div class="visit-flags-row">${flags.map((fl) => `<span class="visit-flag flag-${fl.key}">${escapeHtml(fl.label)}</span>`).join('')}</div>` : ''}
-            ${req ? `<div class="visit-request">Asked to move to <strong>${escapeHtml(prettyDate(req.newDate, today))}, ${escapeHtml(prettyTime(req.newTime))}</strong> · ${escapeHtml(req.reason || '')}</div>` : ''}
-            ${v.cancellationReason && ['cancelled', 'no_show'].includes(v.status) ? `<div class="visit-request">Reason: ${escapeHtml(v.cancellationReason)}</div>` : ''}
-            ${(() => {
-              const actions = [
-                v.patientMobile ? `<a class="contact-btn" href="tel:${escapeHtml(v.patientMobile)}">Call</a>` : '',
-                v.address ? `<a class="contact-btn" href="${mapUrl}" target="_blank" rel="noopener">Map</a>` : '',
-                visitActionsHtml(v, today),
-              ].join('').trim();
-              return actions ? `<div class="visit-actions">${actions}</div>` : '';
-            })()}
+            ${notes ? `<div class="visit-notes">${notes}</div>` : ''}
             ${timelineHtml(v)}
           </article>`;
       }).join('')}
-    </div>`).join('');
+    </div>`;
+  }).join('');
 }
 
 async function loadTodayVisits() {
@@ -1570,13 +1579,26 @@ if (visitForm) {
 // One set of listeners for every visit card.
 const visitsListEl = document.getElementById('today-visits-list');
 if (visitsListEl) {
-  visitsListEl.addEventListener('toggle', (e) => {
-    const d = e.target.closest && e.target.closest('[data-timeline]');
-    if (!d) return;
-    if (d.open) openTimelines.add(d.dataset.timeline); else openTimelines.delete(d.dataset.timeline);
-  }, true);
-
   visitsListEl.addEventListener('click', async (e) => {
+    const historyBtn = e.target.closest('[data-toggle-timeline]');
+    if (historyBtn) {
+      const id = historyBtn.dataset.toggleTimeline;
+      const open = !openTimelines.has(id);
+      if (open) openTimelines.add(id); else openTimelines.delete(id);
+      historyBtn.setAttribute('aria-expanded', String(open));
+      historyBtn.closest('.visit-card').querySelector('.visit-timeline').hidden = !open;
+      return;
+    }
+    if (e.target.closest('[data-toggle-finished]')) {
+      showFinishedVisits = !showFinishedVisits;
+      visitsListEl.querySelectorAll('.visit-card.is-finished').forEach((card) => { card.hidden = !showFinishedVisits; });
+      visitsListEl.querySelectorAll('[data-toggle-finished]').forEach((btn) => {
+        btn.setAttribute('aria-expanded', String(showFinishedVisits));
+        btn.textContent = btn.textContent.replace(/^(Show|Hide)/, showFinishedVisits ? 'Hide' : 'Show');
+      });
+      return;
+    }
+
     const btn = e.target.closest('[data-visit-step], [data-visit-modal], [data-visit-decision]');
     if (!btn) return;
     const visit = visitsById.get(btn.dataset.visitId);
