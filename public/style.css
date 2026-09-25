@@ -875,3 +875,15 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--accent); }
   .chip { padding: 0 9px; font-size: var(--text-sm); }
   .chip.active::after { left: 6px; right: 6px; }
 }
+
+/* Shown when a newer release is live while the app is open */
+.update-bar {
+  position: fixed; left: 50%; bottom: 24px; z-index: 1200; transform: translateX(-50%);
+  display: flex; align-items: center; gap: 16px;
+  width: max-content; max-width: calc(100vw - 32px);
+  padding: 10px 10px 10px 16px;
+  border-radius: var(--r-md); background: var(--text); color: #fff;
+  font-size: var(--text-sm); box-shadow: 0 8px 24px rgba(16, 24, 40, 0.18);
+}
+.update-bar .btn-primary { min-height: 32px; padding: 4px 14px; }
+@media (max-width: 720px) { .update-bar { bottom: calc(76px + env(safe-area-inset-bottom)); } }

@@ -1635,10 +1635,33 @@ if (deleteCaseForm) {
   });
 }
 
+// If CareBridge is updated while this tab is open, offer a reload instead of running old code.
+const PAGE_VERSION = document.documentElement.dataset.version || '';
+let updateNoticeShown = false;
+let lastVersionCheck = 0;
+async function checkForUpdate() {
+  if (!PAGE_VERSION || updateNoticeShown || Date.now() - lastVersionCheck < 60000) return;
+  lastVersionCheck = Date.now();
+  try {
+    const { version } = await fetch('/api/version', { cache: 'no-store' }).then((r) => r.json());
+    if (!version || version === PAGE_VERSION) return;
+    updateNoticeShown = true;
+    const bar = document.createElement('div');
+    bar.className = 'update-bar';
+    bar.setAttribute('role', 'status');
+    bar.innerHTML = '<span>A new version of CareBridge is available.</span><button type="button" class="btn-primary">Reload</button>';
+    bar.querySelector('button').addEventListener('click', () => window.location.reload());
+    document.body.appendChild(bar);
+  } catch (err) {
+    // Offline or between deploys: try again on the next refresh.
+  }
+}
+
 function startPolling() {
   if (pollTimer) clearInterval(pollTimer);
   pollTimer = setInterval(() => {
     loadCases().catch(() => {});
+    checkForUpdate();
   }, 10000);
 }
 

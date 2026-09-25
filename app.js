@@ -36,7 +36,34 @@ const PHYSIO_FILTER = (process.env.PHYSIO_SERVICE_FILTER || 'physio')
   .filter(Boolean);
 
 app.use(express.json());
-app.use(express.static(path.join(__dirname, 'public')));
+
+// Each release gets its own version tag on style.css and app.js, and the page itself is never
+// cached. Otherwise a browser can keep an old page and mix it with new styles after a deploy.
+const PUBLIC_DIR = path.join(__dirname, 'public');
+const readPublic = (name) => require('fs').readFileSync(path.join(PUBLIC_DIR, name), 'utf8');
+const ASSET_VERSION = crypto.createHash('sha256')
+  .update(['index.html', 'style.css', 'app.js'].map(readPublic).join(''))
+  .digest('hex')
+  .slice(0, 12);
+const INDEX_HTML = readPublic('index.html')
+  .replace('href="style.css"', `href="style.css?v=${ASSET_VERSION}"`)
+  .replace('src="app.js"', `src="app.js?v=${ASSET_VERSION}"`)
+  .replace('<html', `<html data-version="${ASSET_VERSION}"`);
+app.get(['/', '/index.html'], (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  res.type('html').send(INDEX_HTML);
+});
+app.get('/api/version', (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  res.json({ version: ASSET_VERSION });
+});
+app.use(express.static(PUBLIC_DIR, {
+  index: false,
+  setHeaders: (res) => {
+    // Versioned links (?v=...) change every release, so those can be kept for a year.
+    res.set('Cache-Control', res.req.query.v ? 'public, max-age=31536000, immutable' : 'no-cache');
+  },
+}));
 
 // In Postgres mode, make sure the schema (and first-run account import) is in place before any
 // request touches the database -- including the session store below. See lib/db-bootstrap.js.
