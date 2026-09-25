@@ -165,3 +165,18 @@ CREATE INDEX IF NOT EXISTS idx_visits_scheduled_date ON visits (scheduled_date);
 ALTER TABLE sessions ADD COLUMN IF NOT EXISTS clinicea_document_id TEXT;
 -- The home visit a session's notes belong to (for the visit timeline in the Clinicea report).
 ALTER TABLE sessions ADD COLUMN IF NOT EXISTS visit_id TEXT;
+
+-- Session forms uploaded by PhysioWay (their own paperwork, one PDF per session).
+CREATE TABLE IF NOT EXISTS session_files (
+  id TEXT PRIMARY KEY,
+  case_id TEXT NOT NULL REFERENCES cases (id) ON DELETE CASCADE,
+  file_name TEXT NOT NULL,
+  content_type TEXT NOT NULL DEFAULT 'application/pdf',
+  size_bytes INT NOT NULL DEFAULT 0,
+  data BYTEA NOT NULL,
+  uploaded_by TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_session_files_case_id ON session_files (case_id);
+ALTER TABLE sessions ADD COLUMN IF NOT EXISTS form_file_id TEXT;
+ALTER TABLE sessions ADD COLUMN IF NOT EXISTS form_file_name TEXT;

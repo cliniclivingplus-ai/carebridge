@@ -21,6 +21,7 @@ const { createVisitService, VisitError } = require('./lib/visit-service');
 const visits = createVisitService(db.isConfigured() ? require('./lib/visits-pg') : require('./lib/visits'));
 const feedbackQuestions = require('./lib/feedback-questions.json');
 const { validateFeedback } = require('./lib/feedback-validate');
+const sessionFiles = require('./lib/session-files');
 
 // The "Simulate booking" endpoint exists purely to demo the webhook flow without a real
 // Clinicea connection. Once a real API key is set, real bookings arrive via webhook and
@@ -35,7 +36,10 @@ const PHYSIO_FILTER = (process.env.PHYSIO_SERVICE_FILTER || 'physio')
   .map((s) => s.trim().toLowerCase())
   .filter(Boolean);
 
-app.use(express.json());
+// Session-form uploads carry files, so they get a bigger limit (Vercel caps requests at 4.5 MB).
+const jsonBody = express.json();
+const uploadBody = express.json({ limit: '4.4mb' });
+app.use((req, res, next) => (req.path.endsWith('/session-upload') ? uploadBody : jsonBody)(req, res, next));
 
 // Each release gets its own version tag on style.css and app.js, and the page itself is never
 // cached. Otherwise a browser can keep an old page and mix it with new styles after a deploy.
@@ -719,6 +723,7 @@ app.delete('/api/cases/:id', requireAuth, requireRole(CLINIC_STAFF), async (req,
     if (!existing) return res.status(404).json({ error: 'Case not found' });
     await visits.deleteForCase(req.params.id);
     await cases.deleteCase(req.params.id);
+    await sessionFiles.deleteForCase(req.params.id);
     console.log(`[case-delete] user=${req.session.user.username} case=${req.params.id} patient=${existing.patientId}`);
     res.json({ ok: true });
   } catch (err) {
@@ -790,7 +795,7 @@ app.get('/api/visits/schedule', requireAuth, async (req, res) => {
     const result = await visits.listSchedule({
       fromDate: req.query.from,
       days: req.query.days,
-      username: CLINIC_STAFF.includes(user.role) ? null : user.username,
+      username: null, // PhysioWay coordinators see every booked visit, like CLP
     });
     res.json({ ok: true, ...result });
   } catch (err) {
@@ -886,6 +891,63 @@ app.post('/api/cases/:id/feedback', requireAuth, requireRole(['external_physio',
     res.json({ ok: true, ...result, visit: closedVisit, case: caseForViewer(req.session.user, result.case) });
   } catch (err) {
     res.status(400).json({ error: err.message });
+  }
+});
+
+// POST /api/cases/:id/session-upload { sessionDate, visitId?, files: [{ name, type, data (base64) }] }
+// PhysioWay uploads their own completed session form. It counts as the session, closes the visit
+// and is attached to the patient's documents in Clinicea as it is.
+app.post('/api/cases/:id/session-upload', requireAuth, async (req, res) => {
+  const user = req.session.user;
+  const { sessionDate, visitId, files } = req.body || {};
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(sessionDate || '') || sessionDate > visits.todayIST()) {
+    return res.status(400).json({ error: 'Please choose the date of the session (today or earlier)' });
+  }
+  try {
+    const existing = await cases.getCase(req.params.id);
+    if (!existing) return res.status(404).json({ error: 'Case not found' });
+    if (existing.status === 'completed' || existing.completedSessions >= existing.allottedSessions) {
+      return res.status(409).json({ error: 'All sessions for this patient are already done' });
+    }
+    const pdf = await sessionFiles.toPdf(files);
+    const sessionNumber = existing.completedSessions + 1;
+    const safeId = String(existing.patientId || 'patient').replace(/[^A-Za-z0-9_-]/g, '');
+    const file = await sessionFiles.saveFile({
+      caseId: existing.id,
+      fileName: `PhysioWay_Session_${sessionNumber}_${safeId}_${sessionDate}.pdf`,
+      data: pdf,
+      uploadedBy: user.username,
+    });
+    const visit = await visits.findVisitForNotes(existing.id, typeof visitId === 'string' ? visitId : null, user);
+    const result = await cases.recordSessionFeedback(existing.id, {
+      beforeAssessment: { sessionDate },
+      afterSummary: {},
+      clinicalNotes: '',
+      sessionDate,
+      physioUsername: user.username,
+      visitId: visit ? visit.id : null,
+      formFileId: file.id,
+      formFileName: file.fileName,
+    });
+    const closedVisit = visit
+      ? await visits.markNotesSubmitted(existing.id, visit.id, result.session.id, user, 'Session form uploaded by PhysioWay')
+      : null;
+    res.json({ ok: true, session: result.session, visit: closedVisit, case: caseForViewer(user, result.case) });
+  } catch (err) {
+    sendError(res, err);
+  }
+});
+
+// GET /api/session-files/:id -- the uploaded session form (PDF), for anyone signed in.
+app.get('/api/session-files/:id', requireAuth, async (req, res) => {
+  try {
+    const file = await sessionFiles.getFile(req.params.id);
+    if (!file) return res.status(404).json({ error: 'Form not found' });
+    res.set('Cache-Control', 'private, no-store');
+    res.set('Content-Disposition', `inline; filename="${file.fileName.replace(/[^A-Za-z0-9_.-]/g, '')}"`);
+    res.type('application/pdf').send(file.data);
+  } catch (err) {
+    sendError(res, err, 500);
   }
 });
 

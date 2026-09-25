@@ -282,6 +282,40 @@
     </div>
   </div>
 
+  <!-- Upload a session form (PhysioWay's own paperwork): a PDF, or photos of the pages. -->
+  <div id="upload-modal" class="modal-backdrop" hidden>
+    <div class="modal-card glass-card" role="dialog" aria-modal="true" aria-labelledby="upload-modal-title">
+      <div class="modal-header">
+        <div>
+          <h3 id="upload-modal-title">Upload session form</h3>
+          <p id="upload-modal-subtitle"></p>
+        </div>
+        <button id="close-upload-modal" class="close-btn" type="button" aria-label="Close">&times;</button>
+      </div>
+      <form id="upload-form" novalidate>
+        <div class="input-group">
+          <label for="upload-date">Session date</label>
+          <input type="date" id="upload-date" required />
+        </div>
+        <div class="input-group">
+          <span class="upload-label">Session form</span>
+          <label class="upload-drop" for="upload-files">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" x2="12" y1="3" y2="15"/></svg>
+            <strong id="upload-drop-title">Choose a PDF or photos</strong>
+            <span>A PDF, or a photo of each page (up to 12)</span>
+          </label>
+          <input type="file" id="upload-files" class="visually-hidden" accept="application/pdf,image/*" multiple />
+          <ul id="upload-file-list" class="upload-file-list"></ul>
+        </div>
+        <p id="upload-error" class="error"></p>
+        <div class="modal-footer">
+          <button type="button" id="upload-cancel" class="btn-secondary">Cancel</button>
+          <button type="submit" id="upload-submit" class="btn-primary">Upload</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
   <!-- Session assessment modal. The questions are built from lib/feedback-questions.json
        (see renderFeedbackForm in app.js), so they can change without touching this file. -->
   <div id="feedback-modal" class="modal-backdrop" hidden>
@@ -375,7 +409,8 @@
           </div>
         </div>
 
-        <div class="input-group">
+        <!-- PhysioWay assigns its own physios, so CLP doesn't pick one. -->
+        <div class="input-group" hidden>
           <label for="allot-physio">Physio <span class="field-hint">optional</span></label>
           <select id="allot-physio" class="styled-select">
             <option value="">Open to any physio</option>
@@ -422,7 +457,7 @@
           <span class="field-hint">Can't be lower than the sessions already completed. Visits are added or removed to match.</span>
         </div>
 
-        <div class="input-group">
+        <div class="input-group" hidden>
           <label for="edit-allotment-physio">Physio</label>
           <select id="edit-allotment-physio">
             <option value="">Open to any physio</option>

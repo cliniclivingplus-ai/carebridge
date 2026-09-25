@@ -12,3 +12,6 @@ scratch/
 
 .env.vercel
 data/visits.json
+
+# Session forms uploaded locally (patient documents -- never commit)
+data/uploads/

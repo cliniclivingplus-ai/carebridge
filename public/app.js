@@ -248,20 +248,20 @@ function showApp(userObj, liveMode) {
   if (lookupSection) lookupSection.hidden = currentUserRole === 'external_physio';
 
   if (currentUserRole === 'external_physio') {
-    if (bannerTitle) bannerTitle.textContent = 'Home visits';
-    if (bannerSub) bannerSub.textContent = 'Take open cases, work through today\'s visits and record each session.';
+    if (bannerTitle) bannerTitle.textContent = 'CLP home visits';
+    if (bannerSub) bannerSub.textContent = 'Patients shared by CLP. Upload your session form after each visit.';
     if (statCard1) statCard1.textContent = 'All cases';
-    if (statCard2) statCard2.textContent = 'My active cases';
-    if (statCard3) statCard3.textContent = 'Open to take';
+    if (statCard2) statCard2.textContent = 'In progress';
+    if (statCard3) statCard3.textContent = 'Not started';
 
     updateFilterChipLabels({
-      open: 'Open cases',
-      mine: 'My cases',
+      open: 'Not started',
+      mine: 'In progress',
       all: 'All cases',
       completed: 'Completed'
     });
-    updateMobileNavLabels('Open cases', 'My cases');
-    orderFilterChips(['all', 'completed', 'open', 'mine']);
+    updateMobileNavLabels('Not started', 'In progress');
+    orderFilterChips(['all', 'mine', 'open', 'completed']);
     setActiveFilter('all');
   } else {
     // Sales and Doctor do the same job on this screen (enrol patients, watch progress), so they
@@ -280,17 +280,18 @@ function showApp(userObj, liveMode) {
     }
     if (statCard1) statCard1.textContent = 'Total enrollments';
     if (statCard2) statCard2.textContent = 'In progress';
-    if (statCard3) statCard3.textContent = 'Waiting for a physio';
+    if (statCard3) statCard3.textContent = 'Not started';
 
-    // "Assigned" = a physio has taken it and sessions remain; "Unassigned" = no physio yet.
+    // PhysioWay chooses its own physios, so cases are "not started" until the first session form
+    // arrives, then "in progress" until the last one.
     updateFilterChipLabels({
       all: 'All enrollments',
       completed: 'Completed',
-      mine: 'Assigned',
-      open: 'Unassigned'
+      mine: 'In progress',
+      open: 'Not started'
     });
-    updateMobileNavLabels('Unassigned', 'Assigned');
-    orderFilterChips(['all', 'completed', 'mine', 'open']);
+    updateMobileNavLabels('Not started', 'In progress');
+    orderFilterChips(['all', 'mine', 'open', 'completed']);
     setActiveFilter('all');
   }
 
@@ -329,31 +330,15 @@ function teamMemberName(username) {
   return member ? member.name : username;
 }
 
-// A physio's own case: keep it, pass it to a colleague, or put it back in the open list.
-function handoverOptionsHtml() {
-  const others = team.filter((m) => (m.role === 'external_physio' || !m.role) && m.username !== currentUser);
-  return [
-    '<option value="__keep" selected>Keep this case</option>',
-    ...others.map((m) => `<option value="${escapeHtml(m.username)}">Give to ${escapeHtml(m.name)}</option>`),
-    '<option value="">Return to open cases</option>',
-  ].join('');
-}
-
 // Always called with EVERY case (not the filtered list on screen), so the counters don't
 // change when a different filter chip is selected.
 function updateStats(casesList) {
   if (statTotal) statTotal.textContent = casesList.length;
   const openCount = casesList.filter((c) => c.status === 'open').length;
   const activeCount = casesList.filter((c) => c.status === 'in_progress').length;
-  const myCount = casesList.filter((c) => c.assignedPhysio === currentUser && c.status !== 'completed').length;
 
-  if (currentUserRole === 'sales' || currentUserRole === 'clp_doctor') {
-    if (statMyVisits) statMyVisits.textContent = activeCount;
-    if (statUnassigned) statUnassigned.textContent = openCount;
-  } else {
-    if (statMyVisits) statMyVisits.textContent = myCount;
-    if (statUnassigned) statUnassigned.textContent = openCount;
-  }
+  if (statMyVisits) statMyVisits.textContent = activeCount;
+  if (statUnassigned) statUnassigned.textContent = openCount;
 }
 
 function filterAppointments() {
@@ -451,7 +436,37 @@ function sectionTitle(id, fallback) {
   return (section && section.title) || fallback;
 }
 
+// The day the session happened (the date given with an upload or on the form), else when it was saved.
+function sessionDateOf(s) {
+  const d = s.beforeAssessment && s.beforeAssessment.sessionDate;
+  return d ? `${d}T00:00:00` : (s.createdAt || s.scheduledDate);
+}
+
 function sessionDetailHtml(s, allotted) {
+  if (s.formFileId) {
+    const day = new Date(sessionDateOf(s)).toLocaleDateString([], { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
+    const uploaded = new Date(s.createdAt).toLocaleString([], { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' });
+    const sync = s.cliniceaSyncStatus || 'pending';
+    return `
+    <div class="session-detail">
+      <div class="session-detail-head">
+        <strong>Session ${s.sessionNumber} of ${allotted}</strong>
+        <span>${escapeHtml(day)}</span>
+      </div>
+      <a class="session-form-link" href="/api/session-files/${encodeURIComponent(s.formFileId)}" target="_blank" rel="noopener">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+        <span>View session form <small>PDF</small></span>
+      </a>
+      <p class="session-sync-note">Uploaded by ${escapeHtml(teamMemberName(s.physioUsername))} · ${escapeHtml(uploaded)}</p>
+      <div class="session-sync-row">
+        <span class="session-sync sync-${escapeHtml(sync)}">${escapeHtml(SYNC_LABELS[sync] || sync)}</span>
+        ${['pending', 'failed'].includes(sync) && currentUserRole !== 'external_physio'
+          ? `<button type="button" class="btn-secondary session-send-btn" data-sync-session="${escapeHtml(s.id)}">Send to Clinicea</button>`
+          : ''}
+      </div>
+      ${s.cliniceaSyncError && sync !== 'synced' && currentUserRole !== 'external_physio' ? `<p class="session-sync-note">${escapeHtml(s.cliniceaSyncError)}</p>` : ''}
+    </div>`;
+  }
   const when = new Date(s.createdAt || s.scheduledDate).toLocaleString([], { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
   const sync = s.cliniceaSyncStatus || 'pending';
   const before = answerRows(s.beforeAssessment);
@@ -512,30 +527,29 @@ function caseNextShort(item) {
 
 function renderCasesList(casesList) {
   listEl.innerHTML = casesList.length
-    ? '<div class="case-list-head" aria-hidden="true"><span>Patient</span><span>Sessions</span><span>Next visit</span><span>Physio</span><span>Status</span><span></span></div>'
+    ? '<div class="case-list-head" aria-hidden="true"><span>Patient</span><span>Sessions</span><span>Next visit</span><span>Last session</span><span>Status</span><span></span></div>'
     : '';
   emptyState.hidden = casesList.length > 0;
   // A single case opens by itself; with more, the list stays compact until a row is opened.
   const openByDefault = casesList.length === 1;
 
   const canEditAllotment = currentUserRole === 'sales' || currentUserRole === 'clp_doctor';
-  const isPhysio = currentUserRole === 'external_physio';
-  const canRecordFeedback = currentUserRole === 'external_physio' || currentUserRole === 'clp_doctor';
 
   for (const item of casesList) {
     const card = document.createElement('div');
-    const isMine = item.assignedPhysio === currentUser;
     const expanded = caseExpanded.has(item.id) ? caseExpanded.get(item.id) : openByDefault;
-    card.className = `appt-card case-item ${isMine ? 'is-mine' : ''} ${expanded ? 'is-open' : ''}`;
+    card.className = `appt-card case-item${expanded ? ' is-open' : ''}`;
 
-    const assignedName = item.assignedPhysio ? teamMemberName(item.assignedPhysio) : 'Unassigned Pool';
     const allotted = item.allottedSessions || 10;
     const completed = item.completedSessions || 0;
     const pct = allotted > 0 ? Math.min(100, Math.round((completed / allotted) * 100)) : 0;
     const statusClass = `status-${item.status || 'open'}`;
-    const statusLabel = { open: 'Open', in_progress: 'In progress', completed: 'Completed' }[item.status || 'open'] || item.status;
+    const statusLabel = { open: 'Not started', in_progress: 'In progress', completed: 'Completed' }[item.status || 'open'] || item.status;
 
-    const physioShort = isMine ? 'You' : (item.assignedPhysio ? escapeHtml(assignedName) : '<span class="muted">Waiting</span>');
+    const lastSession = (item.sessions || []).reduce((latest, sess) => (!latest || sess.sessionNumber > latest.sessionNumber ? sess : latest), null);
+    const lastSessionShort = lastSession
+      ? escapeHtml(new Date(sessionDateOf(lastSession)).toLocaleDateString([], { day: 'numeric', month: 'short' }))
+      : '<span class="muted">None yet</span>';
     card.innerHTML = `
       <button type="button" class="case-row" data-toggle-case="${escapeHtml(item.id)}" aria-expanded="${expanded}">
         <span class="case-row-patient">
@@ -547,7 +561,7 @@ function renderCasesList(casesList) {
           <span class="case-row-bar"><span style="width: ${pct}%;"></span></span>
         </span>
         <span class="case-row-next">${caseNextShort(item)}</span>
-        <span class="case-row-physio">${physioShort}</span>
+        <span class="case-row-physio">${lastSessionShort}</span>
         <span class="case-row-status"><span class="case-status-badge ${statusClass}">${statusLabel}</span></span>
         <span class="case-row-chevron" aria-hidden="true"></span>
       </button>
@@ -598,41 +612,12 @@ function renderCasesList(casesList) {
         ` : ''}
       </div>
 
-      ${!isPhysio ? `
-      <div class="assign-box assign-readonly">
-        <span class="assign-label">Physio</span>
-        <span class="assigned-tag">${item.assignedPhysio ? escapeHtml(assignedName) : '<span class="muted">Waiting for a physio</span>'}</span>
-      </div>
-      ` : `
-      <div class="assign-box">
-        <div class="assign-header">
-          <span class="assign-label">Physio</span>
-          <span class="assigned-tag" data-assign-tag-for="${item.id}">${isMine ? 'You' : (item.assignedPhysio ? escapeHtml(assignedName) : '<span class="muted">Nobody yet</span>')}</span>
-        </div>
-        <div class="assign-controls">
-          ${(isMine && item.status !== 'completed') ? `
-            <!-- Hand over: only on your own active case (the server rejects anything else). -->
-            <label class="handover-label" for="handover-${item.id}">Hand over</label>
-            <select class="assign-select" id="handover-${item.id}" data-assign-for="${item.id}">
-              ${handoverOptionsHtml()}
-            </select>
-          ` : ''}
-          ${(!item.assignedPhysio || item.status === 'open') ? `
-            <button class="btn-claim-case" data-claim-case="${item.id}">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m5 12 5 5L20 7"/></svg>
-              <span>Take case</span>
-            </button>
-          ` : ''}
-        </div>
-      </div>
-      `}
-
-      <!-- Feedback Action Button -->
-      ${(canRecordFeedback && item.status !== 'completed' && (!isPhysio || isMine)) ? `
+      <!-- Upload the session form (PhysioWay's own paperwork) -->
+      ${item.status !== 'completed' ? `
         <div class="feedback-action-strip">
-          <button class="btn-open-feedback" data-case-id="${item.id}" data-patient-id="${item.patientId || ''}" data-name="${item.patientName || 'Patient'}">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-            <span>Record session ${completed + 1} of ${allotted}</span>
+          <button type="button" class="btn-open-feedback" data-upload-case="${escapeHtml(item.id)}">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" x2="12" y1="3" y2="15"/></svg>
+            <span>Upload session ${completed + 1} of ${allotted}</span>
           </button>
         </div>
       ` : ''}
@@ -726,67 +711,6 @@ function attachCardEvents() {
       if (openSessionByCase.get(caseId) === sessionId) openSessionByCase.delete(caseId);
       else openSessionByCase.set(caseId, sessionId);
       renderCasesList(rawCases);
-    });
-  });
-
-  // Claim Case / Take Case button
-  listEl.querySelectorAll('[data-claim-case]').forEach((btn) => {
-    btn.addEventListener('click', async () => {
-      const caseId = btn.dataset.claimCase;
-      btn.disabled = true;
-      try {
-        await api(`/api/cases/${encodeURIComponent(caseId)}/claim`, { method: 'POST' });
-        await loadCases();
-      } catch (err) {
-        notify(`Claim failed: ${err.message}`);
-        btn.disabled = false;
-      }
-    });
-  });
-
-  // Assign Case select dropdown
-  listEl.querySelectorAll('select[data-assign-for]').forEach((select) => {
-    select.addEventListener('change', async () => {
-      const caseId = select.dataset.assignFor;
-      if (select.value === '__keep') return;
-      const target = select.value;
-      const ok = await confirmDialog({
-        title: target ? `Give this case to ${teamMemberName(target)}?` : 'Return this case to open cases?',
-        body: target
-          ? `${teamMemberName(target)} will take over the remaining visits. You won't see this case under My cases any more.`
-          : 'Any physio will be able to take it. You will no longer be assigned to its remaining visits.',
-        confirmLabel: target ? 'Hand over' : 'Return case',
-      });
-      if (!ok) { select.value = '__keep'; return; }
-      select.disabled = true;
-      try {
-        await api(`/api/cases/${encodeURIComponent(caseId)}/assign`, {
-          method: 'PUT',
-          body: JSON.stringify({ assignedPhysio: select.value || null }),
-        });
-        await loadCases();
-      } catch (err) {
-        notify(`Assignment failed: ${err.message}`);
-        select.disabled = false;
-      }
-    });
-  });
-
-  // Open Feedback Modal
-  listEl.querySelectorAll('.btn-open-feedback').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      const caseId = btn.dataset.caseId;
-      const patientId = btn.dataset.patientId;
-      const name = btn.dataset.name;
-
-      if (fbCaseId) fbCaseId.value = caseId;
-      if (fbPatientId) fbPatientId.value = patientId;
-      const sessionLabel = (btn.textContent.match(/session (\d+ of \d+)/i) || [])[1];
-      document.getElementById('modal-subtitle').textContent = [name, patientId, sessionLabel && `Session ${sessionLabel}`].filter(Boolean).join(' · ');
-      const fbVisit = document.getElementById('fb-visit-id');
-      if (fbVisit) fbVisit.value = '';
-      renderFeedbackForm();
-      if (feedbackModal) feedbackModal.hidden = false;
     });
   });
 
@@ -1235,7 +1159,7 @@ async function loadTeam() {
 // For Sales/Doctor the second chip means "in progress" (assigned to any physio), not
 // "assigned to me" -- nobody assigns cases to a Sales account, so 'mine' would always be empty.
 function serverFilterFor(filter) {
-  if (filter === 'mine' && currentUserRole !== 'external_physio') return 'active';
+  if (filter === 'mine') return 'active';
   return filter;
 }
 
@@ -1258,13 +1182,13 @@ const openTimelines = new Set(); // visit ids whose timeline is expanded (kept a
 let showFinishedVisits = false; // finished visits fold into one line until asked for
 
 const VISIT_STATUS = {
-  scheduled: { label: 'Waiting for a physio', tone: 'muted' },
+  scheduled: { label: 'Booked', tone: 'info' },
   confirmed: { label: 'Confirmed', tone: 'info' },
   on_the_way: { label: 'On the way', tone: 'progress' },
   arrived: { label: 'Arrived', tone: 'progress' },
   in_session: { label: 'In session', tone: 'progress' },
   completed: { label: 'Notes due', tone: 'warn' },
-  notes_submitted: { label: 'Done', tone: 'ok' },
+  notes_submitted: { label: 'Form uploaded', tone: 'ok' },
   cancelled: { label: 'Cancelled', tone: 'bad' },
   no_show: { label: 'Patient not available', tone: 'bad' },
   reschedule_requested: { label: 'Reschedule requested', tone: 'warn' },
@@ -1324,11 +1248,7 @@ function prettyTime(t) {
 function visitFlags(v, today) {
   const flags = [];
   const active = !CLOSED.includes(v.status) && v.status !== 'completed';
-  if (active && v.scheduledDate < today) flags.push({ key: 'overdue', label: 'Overdue' });
-  if (NOT_STARTED.includes(v.status) && v.scheduledDate === today && minutesOf(nowTimeIST()) > minutesOf(v.scheduledTime) + 15) {
-    flags.push({ key: 'late', label: 'Not started yet' });
-  }
-  if (!v.assignedPhysio && active) flags.push({ key: 'unassigned', label: 'No physio' });
+  if (active && v.scheduledDate < today) flags.push({ key: 'overdue', label: 'Form not uploaded' });
   if (v.status === 'completed') flags.push({ key: 'notes', label: 'Notes not submitted' });
   if (v.status === 'reschedule_requested') flags.push({ key: 'reschedule', label: 'Needs your decision' });
   if (v.overlapWarning) flags.push({ key: 'overlap', label: 'Overlaps another visit' });
@@ -1361,18 +1281,16 @@ function timelineHtml(v) {
 function visitActionsHtml(v, today) {
   const id = escapeHtml(v.id);
   const staff = currentUserRole === 'sales' || currentUserRole === 'clp_doctor';
-  const mine = v.assignedPhysio === currentUser;
   const buttons = [];
 
-  if (mine && !staff || (mine && currentUserRole === 'clp_doctor')) {
-    const next = NEXT_STEP[v.status];
-    if (next && (v.scheduledDate <= today || v.status === 'completed')) {
-      buttons.push(`<button type="button" class="btn-primary visit-btn" data-visit-step="${next.step}" data-visit-id="${id}" data-case-id="${escapeHtml(v.caseId)}">${next.label}</button>`);
-    }
-    if (NOT_STARTED.includes(v.status)) {
-      buttons.push(`<button type="button" class="btn-secondary visit-btn" data-visit-modal="request" data-visit-id="${id}">Ask to reschedule</button>`);
-    }
-    if (['confirmed', 'on_the_way', 'arrived'].includes(v.status) && v.scheduledDate <= today) {
+  const partner = currentUserRole === 'external_physio';
+  const open = !CLOSED.includes(v.status);
+  if (partner && open && v.scheduledDate <= today && v.status !== 'reschedule_requested') {
+    buttons.push(`<button type="button" class="btn-primary visit-btn" data-upload-visit="${id}" data-upload-case="${escapeHtml(v.caseId)}">Upload form</button>`);
+  }
+  if (partner && NOT_STARTED.includes(v.status)) {
+    buttons.push(`<button type="button" class="btn-secondary visit-btn" data-visit-modal="request" data-visit-id="${id}">Ask to reschedule</button>`);
+    if (v.scheduledDate <= today) {
       buttons.push(`<button type="button" class="btn-secondary visit-btn" data-visit-modal="no_show" data-visit-id="${id}">Patient not available</button>`);
     }
   }
@@ -1388,7 +1306,7 @@ function visitActionsHtml(v, today) {
     }
   }
 
-  if ((staff || mine) && !CLOSED.includes(v.status) && !['completed', 'in_session'].includes(v.status)) {
+  if (staff && !CLOSED.includes(v.status) && !['completed', 'in_session'].includes(v.status)) {
     buttons.push(`<button type="button" class="text-link visit-cancel" data-visit-modal="cancel" data-visit-id="${id}">Cancel visit</button>`);
   }
   return buttons.join('');
@@ -1437,7 +1355,7 @@ function renderVisits(data) {
         const req = v.rescheduleRequest;
         const mapUrl = `https://maps.google.com/?q=${encodeURIComponent(v.address || '')}`;
         const isFinished = CLOSED.includes(v.status);
-        const meta = [`Visit ${v.visitNumber}`, staff ? (v.assignedPhysio ? teamMemberName(v.assignedPhysio) : 'No physio yet') : '', v.address || '']
+        const meta = [`Visit ${v.visitNumber}`, v.address || '']
           .filter(Boolean).map(escapeHtml).join(' · ');
         const actions = [
           visitActionsHtml(v, today),
@@ -1500,6 +1418,141 @@ function openNotesForVisit(visit) {
   renderFeedbackForm();
   if (feedbackModal) feedbackModal.hidden = false;
 }
+
+// ----- Upload a session form (PhysioWay) -----
+// Photos are shrunk in the browser (Vercel accepts requests up to about 4.5 MB); the server turns
+// them into one PDF. A PDF is sent as it is.
+const MAX_UPLOAD_BYTES = 3.2 * 1024 * 1024;
+let uploadState = null;
+
+function readAsBase64(blob) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result).split(',')[1] || '');
+    reader.onerror = () => reject(new Error("Couldn't read the file"));
+    reader.readAsDataURL(blob);
+  });
+}
+
+async function shrinkPhoto(file) {
+  const bitmap = await createImageBitmap(file).catch(() => null);
+  if (!bitmap) throw new Error(`"${file.name}" can't be opened. Please use a JPG or PNG photo, or a PDF.`);
+  const scale = Math.min(1, 1800 / Math.max(bitmap.width, bitmap.height));
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.round(bitmap.width * scale);
+  canvas.height = Math.round(bitmap.height * scale);
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#fff';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+  const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', 0.78));
+  return { name: file.name, type: 'image/jpeg', data: await readAsBase64(blob), size: blob.size };
+}
+
+function renderUploadFileList() {
+  const listEl2 = document.getElementById('upload-file-list');
+  const files = uploadState ? uploadState.files : [];
+  listEl2.innerHTML = files.map((file, i) => `
+    <li><span>${escapeHtml(file.name)}</span><small>${file.type === 'application/pdf' ? 'PDF' : `Page ${i + 1}`} · ${Math.max(1, Math.round(file.size / 1024))} KB</small>
+      <button type="button" class="text-link" data-remove-upload="${i}">Remove</button></li>`).join('');
+  document.getElementById('upload-drop-title').textContent = files.length ? 'Add more photos' : 'Choose a PDF or photos';
+}
+
+function openUploadModal(caseId, visitId) {
+  const item = rawCases.find((c) => c.id === caseId);
+  const visit = visitId ? visitsById.get(visitId) : null;
+  const name = (item && item.patientName) || (visit && visit.patientName) || 'Patient';
+  const fileNo = (item && item.patientId) || (visit && visit.patientId) || '';
+  const number = item ? `Session ${(item.completedSessions || 0) + 1} of ${item.allottedSessions}` : '';
+  uploadState = { caseId, visitId: visitId || null, files: [] };
+  document.getElementById('upload-modal-subtitle').textContent = [name, fileNo, number].filter(Boolean).join(' · ');
+  const date = document.getElementById('upload-date');
+  date.max = todayInputValue();
+  date.value = visit && visit.scheduledDate <= todayInputValue() ? visit.scheduledDate : todayInputValue();
+  document.getElementById('upload-error').textContent = '';
+  document.getElementById('upload-files').value = '';
+  renderUploadFileList();
+  document.getElementById('upload-modal').hidden = false;
+}
+
+function closeUploadModal() {
+  document.getElementById('upload-modal').hidden = true;
+  uploadState = null;
+}
+
+const uploadForm = document.getElementById('upload-form');
+if (uploadForm) {
+  const errorEl = document.getElementById('upload-error');
+  document.getElementById('close-upload-modal').addEventListener('click', closeUploadModal);
+  document.getElementById('upload-cancel').addEventListener('click', closeUploadModal);
+
+  document.getElementById('upload-files').addEventListener('change', async (e) => {
+    if (!uploadState) return;
+    errorEl.textContent = '';
+    const picked = [...e.target.files];
+    e.target.value = '';
+    try {
+      for (const file of picked) {
+        if (file.type === 'application/pdf' || /\.pdf$/i.test(file.name)) {
+          if (file.size > MAX_UPLOAD_BYTES) throw new Error('That PDF is over 3 MB. Please upload photos of the pages instead.');
+          uploadState.files = [{ name: file.name, type: 'application/pdf', data: await readAsBase64(file), size: file.size }];
+        } else {
+          uploadState.files = uploadState.files.filter((x) => x.type !== 'application/pdf');
+          uploadState.files.push(await shrinkPhoto(file));
+        }
+      }
+    } catch (err) {
+      errorEl.textContent = err.message;
+    }
+    renderUploadFileList();
+  });
+
+  document.getElementById('upload-file-list').addEventListener('click', (e) => {
+    const btn = e.target.closest('[data-remove-upload]');
+    if (!btn || !uploadState) return;
+    uploadState.files.splice(Number(btn.dataset.removeUpload), 1);
+    renderUploadFileList();
+  });
+
+  uploadForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    if (!uploadState) return;
+    const sessionDate = document.getElementById('upload-date').value;
+    if (!sessionDate) { errorEl.textContent = 'Please choose the date of the session.'; return; }
+    if (!uploadState.files.length) { errorEl.textContent = 'Please attach the session form.'; return; }
+    const total = uploadState.files.reduce((sum, file) => sum + file.data.length, 0);
+    if (total > 4.2 * 1024 * 1024) { errorEl.textContent = 'These files are too large together. Please remove a page or two and upload the rest as a second session.'; return; }
+
+    const submit = document.getElementById('upload-submit');
+    submit.disabled = true;
+    submit.textContent = 'Uploading…';
+    try {
+      await api(`/api/cases/${encodeURIComponent(uploadState.caseId)}/session-upload`, {
+        method: 'POST',
+        body: JSON.stringify({
+          sessionDate,
+          visitId: uploadState.visitId,
+          files: uploadState.files.map(({ name, type, data }) => ({ name, type, data })),
+        }),
+      });
+      closeUploadModal();
+      notify('Session form uploaded');
+      await refreshAfterVisitChange();
+    } catch (err) {
+      errorEl.textContent = err.message;
+    } finally {
+      submit.disabled = false;
+      submit.textContent = 'Upload';
+    }
+  });
+}
+
+// Upload buttons on case rows and on visits.
+document.addEventListener('click', (e) => {
+  const btn = e.target.closest('[data-upload-case]');
+  if (!btn) return;
+  openUploadModal(btn.dataset.uploadCase, btn.dataset.uploadVisit || null);
+});
 
 // ----- the small visit window (reschedule / change time / cancel / no-show / decline) -----
 const VISIT_MODAL_MODES = {
