@@ -869,12 +869,8 @@ app.post('/api/cases/:id/feedback', requireAuth, requireRole(['external_physio',
   try {
     const existing = await cases.getCase(req.params.id);
     if (!existing) return res.status(404).json({ error: 'Case not found' });
-    if (!existing.assignedPhysio) {
-      return res.status(409).json({ error: 'Claim this case before recording a session' });
-    }
-    if (user.role !== 'clp_doctor' && existing.assignedPhysio !== user.username) {
-      return res.status(403).json({ error: 'Only the physio assigned to this case can record its sessions' });
-    }
+    // PhysioWay coordinators record sessions for every shared case (PhysioWay assigns its own
+    // physios), so there's no "assigned physio" check here.
     // Link the notes to their visit before saving, so the report sent to Clinicea can include
     // the visit's timeline (on the way, arrived, started, finished, check-in location).
     const requestedVisit = typeof req.body.visitId === 'string' ? req.body.visitId : null;
@@ -887,7 +883,7 @@ app.post('/api/cases/:id/feedback', requireAuth, requireRole(['external_physio',
       physioUsername: req.session.user.username,
       visitId: visit ? visit.id : null,
     });
-    const closedVisit = visit ? await visits.markNotesSubmitted(req.params.id, visit.id, result.session.id, user) : null;
+    const closedVisit = visit ? await visits.markNotesSubmitted(req.params.id, visit.id, result.session.id, user, 'Session notes recorded in CareBridge') : null;
     res.json({ ok: true, ...result, visit: closedVisit, case: caseForViewer(req.session.user, result.case) });
   } catch (err) {
     res.status(400).json({ error: err.message });

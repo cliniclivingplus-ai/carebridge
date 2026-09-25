@@ -249,7 +249,7 @@ function showApp(userObj, liveMode) {
 
   if (currentUserRole === 'external_physio') {
     if (bannerTitle) bannerTitle.textContent = 'CLP home visits';
-    if (bannerSub) bannerSub.textContent = 'Patients shared by CLP. Upload your session form after each visit.';
+    if (bannerSub) bannerSub.textContent = 'Patients shared by CLP. After each visit, record the session or upload your form.';
     if (statCard1) statCard1.textContent = 'All cases';
     if (statCard2) statCard2.textContent = 'In progress';
     if (statCard3) statCard3.textContent = 'Not started';
@@ -534,6 +534,8 @@ function renderCasesList(casesList) {
   const openByDefault = casesList.length === 1;
 
   const canEditAllotment = currentUserRole === 'sales' || currentUserRole === 'clp_doctor';
+  // The session form is filled in by PhysioWay (pasting from their own notes) or a CLP doctor.
+  const canRecordSessions = currentUserRole === 'external_physio' || currentUserRole === 'clp_doctor';
 
   for (const item of casesList) {
     const card = document.createElement('div');
@@ -612,13 +614,20 @@ function renderCasesList(casesList) {
         ` : ''}
       </div>
 
-      <!-- Upload the session form (PhysioWay's own paperwork) -->
+      <!-- Record the session (type or paste the answers), or upload PhysioWay's own form -->
       ${item.status !== 'completed' ? `
         <div class="feedback-action-strip">
+          ${canRecordSessions ? `
+          <button type="button" class="btn-open-feedback" data-record-case="${escapeHtml(item.id)}">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+            <span>Record session ${completed + 1} of ${allotted}</span>
+          </button>
+          <button type="button" class="btn-secondary btn-upload-alt" data-upload-case="${escapeHtml(item.id)}">Upload form</button>
+          ` : `
           <button type="button" class="btn-open-feedback" data-upload-case="${escapeHtml(item.id)}">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" x2="12" y1="3" y2="15"/></svg>
             <span>Upload session ${completed + 1} of ${allotted}</span>
-          </button>
+          </button>`}
         </div>
       ` : ''}
 
@@ -991,7 +1000,7 @@ if (feedbackForm) {
     const origHtml = submitBtn ? submitBtn.innerHTML : '';
     if (submitBtn) {
       submitBtn.disabled = true;
-      submitBtn.innerHTML = '<span>Saving Session...</span>';
+      submitBtn.innerHTML = '<span>Saving…</span>';
     }
 
     const { payload, error, element } = collectFeedback();
@@ -1019,7 +1028,8 @@ if (feedbackForm) {
       });
 
       feedbackModal.hidden = true;
-      await loadCases();
+      notify('Session saved');
+      await refreshAfterVisitChange();
     } catch (err) {
       if (fbError) fbError.textContent = err.message;
     } finally {
@@ -1286,7 +1296,8 @@ function visitActionsHtml(v, today) {
   const partner = currentUserRole === 'external_physio';
   const open = !CLOSED.includes(v.status);
   if (partner && open && v.scheduledDate <= today && v.status !== 'reschedule_requested') {
-    buttons.push(`<button type="button" class="btn-primary visit-btn" data-upload-visit="${id}" data-upload-case="${escapeHtml(v.caseId)}">Upload form</button>`);
+    buttons.push(`<button type="button" class="btn-primary visit-btn" data-record-visit="${id}" data-record-case="${escapeHtml(v.caseId)}">Record session</button>`);
+    buttons.push(`<button type="button" class="btn-secondary visit-btn" data-upload-visit="${id}" data-upload-case="${escapeHtml(v.caseId)}">Upload form</button>`);
   }
   if (partner && NOT_STARTED.includes(v.status)) {
     buttons.push(`<button type="button" class="btn-secondary visit-btn" data-visit-modal="request" data-visit-id="${id}">Ask to reschedule</button>`);
@@ -1410,14 +1421,37 @@ function getPosition() {
   });
 }
 
-function openNotesForVisit(visit) {
-  fbCaseId.value = visit.caseId;
+function openSessionForm(caseId, visitId) {
+  const item = rawCases.find((c) => c.id === caseId);
+  const visit = visitId ? visitsById.get(visitId) : null;
+  fbCaseId.value = caseId;
+  if (fbPatientId) fbPatientId.value = (item && item.patientId) || (visit && visit.patientId) || '';
   const fbVisit = document.getElementById('fb-visit-id');
-  if (fbVisit) fbVisit.value = visit.id;
-  document.getElementById('modal-subtitle').textContent = `${visit.patientName} · Visit ${visit.visitNumber}`;
+  if (fbVisit) fbVisit.value = visitId || '';
+  const name = (item && item.patientName) || (visit && visit.patientName) || 'Patient';
+  const fileNo = (item && item.patientId) || (visit && visit.patientId) || '';
+  const number = item ? `Session ${(item.completedSessions || 0) + 1} of ${item.allottedSessions}` : (visit ? `Visit ${visit.visitNumber}` : '');
+  document.getElementById('modal-subtitle').textContent = [name, fileNo, number].filter(Boolean).join(' · ');
   renderFeedbackForm();
+  // Opened from a visit: start from the date and time it was booked for.
+  if (visit && visit.scheduledDate <= todayInputValue()) {
+    const dateInput = feedbackForm.querySelector('[name="fq-sessionDate"]');
+    const timeInput = feedbackForm.querySelector('[name="fq-sessionTime"]');
+    if (dateInput) dateInput.value = visit.scheduledDate;
+    if (timeInput) timeInput.value = visit.scheduledTime;
+  }
   if (feedbackModal) feedbackModal.hidden = false;
 }
+
+function openNotesForVisit(visit) {
+  openSessionForm(visit.caseId, visit.id);
+}
+
+document.addEventListener('click', (e) => {
+  const btn = e.target.closest('[data-record-case]');
+  if (!btn) return;
+  openSessionForm(btn.dataset.recordCase, btn.dataset.recordVisit || null);
+});
 
 // ----- Upload a session form (PhysioWay) -----
 // Photos are shrunk in the browser (Vercel accepts requests up to about 4.5 MB); the server turns

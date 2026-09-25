@@ -1001,3 +1001,8 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--accent); }
 }
 .session-form-link:hover { border-color: var(--accent); color: var(--accent); }
 .session-form-link small { margin-left: 4px; font-weight: 400; color: var(--text-3); }
+
+/* Record session + Upload form side by side */
+.feedback-action-strip { display: flex; gap: 8px; }
+.feedback-action-strip .btn-open-feedback { flex: 1; width: auto; }
+.btn-upload-alt { flex: none; min-height: var(--control-h); }
