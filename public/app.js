@@ -496,9 +496,27 @@ function visitSummaryHtml(item) {
     </div>`;
 }
 
+// Which case rows are opened. Kept outside the list so the 10-second refresh keeps them open.
+const caseExpanded = new Map();
+
+function caseNextShort(item) {
+  const vs = item.visitSummary;
+  if (item.status === 'completed') return '<span class="muted">Complete</span>';
+  const next = vs && vs.nextVisit;
+  const alert = vs && (vs.pendingReschedule ? 'Reschedule requested' : (vs.overdue ? `${vs.overdue} overdue` : ''));
+  const when = next
+    ? `${escapeHtml(new Date(`${next.date}T00:00:00`).toLocaleDateString([], { weekday: 'short', day: 'numeric', month: 'short' }))} · ${escapeHtml(prettyTime(next.time))}`
+    : '<span class="muted">None booked</span>';
+  return `<span>${when}</span>${alert ? `<span class="case-row-alert">${escapeHtml(alert)}</span>` : ''}`;
+}
+
 function renderCasesList(casesList) {
-  listEl.innerHTML = '';
+  listEl.innerHTML = casesList.length
+    ? '<div class="case-list-head" aria-hidden="true"><span>Patient</span><span>Sessions</span><span>Next visit</span><span>Physio</span><span>Status</span><span></span></div>'
+    : '';
   emptyState.hidden = casesList.length > 0;
+  // A single case opens by itself; with more, the list stays compact until a row is opened.
+  const openByDefault = casesList.length === 1;
 
   const canEditAllotment = currentUserRole === 'sales' || currentUserRole === 'clp_doctor';
   const isPhysio = currentUserRole === 'external_physio';
@@ -507,7 +525,8 @@ function renderCasesList(casesList) {
   for (const item of casesList) {
     const card = document.createElement('div');
     const isMine = item.assignedPhysio === currentUser;
-    card.className = `appt-card glass-card ${isMine ? 'is-mine' : ''}`;
+    const expanded = caseExpanded.has(item.id) ? caseExpanded.get(item.id) : openByDefault;
+    card.className = `appt-card case-item ${isMine ? 'is-mine' : ''} ${expanded ? 'is-open' : ''}`;
 
     const assignedName = item.assignedPhysio ? teamMemberName(item.assignedPhysio) : 'Unassigned Pool';
     const allotted = item.allottedSessions || 10;
@@ -516,19 +535,26 @@ function renderCasesList(casesList) {
     const statusClass = `status-${item.status || 'open'}`;
     const statusLabel = { open: 'Open', in_progress: 'In progress', completed: 'Completed' }[item.status || 'open'] || item.status;
 
+    const physioShort = isMine ? 'You' : (item.assignedPhysio ? escapeHtml(assignedName) : '<span class="muted">Waiting</span>');
     card.innerHTML = `
-      <div class="card-header-bar">
-        <div class="time-pill">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect width="18" height="18" x="3" y="4" rx="2" ry="2"/><line x1="16" x2="16" y1="2" y2="6"/><line x1="8" x2="8" y1="2" y2="6"/></svg>
-          <span>${item.id}</span>
-        </div>
-        <span class="case-status-badge ${statusClass}">${statusLabel}</span>
-      </div>
+      <button type="button" class="case-row" data-toggle-case="${escapeHtml(item.id)}" aria-expanded="${expanded}">
+        <span class="case-row-patient">
+          <span class="case-row-name">${escapeHtml(item.patientName || 'Patient')}</span>
+          <span class="case-row-sub">${escapeHtml(item.patientId)}</span>
+        </span>
+        <span class="case-row-progress">
+          <span class="case-row-count"><strong>${completed}</strong> of ${allotted}</span>
+          <span class="case-row-bar"><span style="width: ${pct}%;"></span></span>
+        </span>
+        <span class="case-row-next">${caseNextShort(item)}</span>
+        <span class="case-row-physio">${physioShort}</span>
+        <span class="case-row-status"><span class="case-status-badge ${statusClass}">${statusLabel}</span></span>
+        <span class="case-row-chevron" aria-hidden="true"></span>
+      </button>
 
-      <div class="patient-info">
-        <div class="patient-name">${escapeHtml(item.patientName || 'Patient')}<span class="patient-file-no">${escapeHtml(item.patientId)}</span></div>
-        <div class="practitioner-sub">Enrolled by ${teamMemberName(item.createdBy)}</div>
-      </div>
+      <div class="case-body"${expanded ? '' : ' hidden'}>
+      <div class="case-body-main">
+      <div class="case-meta">${escapeHtml(item.id)} · Enrolled by ${escapeHtml(teamMemberName(item.createdBy))}</div>
 
       <!-- Symptoms & Clinical Concern Box -->
       ${item.symptomsConcern ? `
@@ -611,6 +637,8 @@ function renderCasesList(casesList) {
         </div>
       ` : ''}
 
+      </div>
+      <div class="case-body-side">
       <!-- Session History Timeline Box -->
       <div class="notes-box">
         <div class="notes-label-bar">
@@ -642,6 +670,8 @@ function renderCasesList(casesList) {
           <button type="button" class="text-link case-delete-btn" data-delete-case="${escapeHtml(item.id)}">Delete case</button>
         </div>
       ` : ''}
+      </div>
+      </div>
     `;
     listEl.appendChild(card);
   }
@@ -650,6 +680,18 @@ function renderCasesList(casesList) {
 }
 
 function attachCardEvents() {
+  // Open / close a case row without rebuilding the list.
+  listEl.querySelectorAll('[data-toggle-case]').forEach((row) => {
+    row.addEventListener('click', () => {
+      const card = row.closest('.case-item');
+      const open = !card.classList.contains('is-open');
+      caseExpanded.set(row.dataset.toggleCase, open);
+      card.classList.toggle('is-open', open);
+      row.setAttribute('aria-expanded', String(open));
+      card.querySelector('.case-body').hidden = !open;
+    });
+  });
+
   // Delete case: confirmation window first.
   listEl.querySelectorAll('[data-delete-case]').forEach((btn) => {
     btn.addEventListener('click', () => {
